@@ -1,0 +1,28 @@
+itemGroup.tomsstorage=Tom's Simple Storage
+
+tile.tomsstorage.inventory_connector.name=Inventory Connector
+tile.tomsstorage.storage_terminal.name=Storage Terminal
+tile.tomsstorage.crafting_terminal.name=Crafting Terminal
+tile.tomsstorage.trim.name=Inventory Trim
+
+item.tomsstorage.wireless_terminal.name=Wireless Terminal
+tooltip.tomsstorage.sorting.0=Sort: Amount
+tooltip.tomsstorage.sorting.1=Sort: Name
+tooltip.tomsstorage.direction.0=Direction: Normal
+tooltip.tomsstorage.direction.1=Direction: Reversed
+tooltip.tomsstorage.inventory_connector=Connects all of the touching inventories into one.\Use the Storage Terminal to access\all of your items.
+tooltip.tomsstorage.inventory_connector.range=Max scan range: %d blocks
+tooltip.tomsstorage.storage_terminal=Gives access to your items.\Place it on an inventory.
+tooltip.tomsstorage.crafting_terminal=Gives access to your items.\Place it on an inventory.\Has a builtin crafting table.
+tooltip.tomsstorage.trim=Connects inventories with the Inventory Connector.
+tooltip.tomsstorage.wireless_terminal=Extends your reach for the terminal.
+tooltip.tomsstorage.wireless_terminal.range=Max connection distance: %d blocks
+tooltip.tomsstorage.wireless_terminal.unbound=Sneak-right-click a terminal to bind.
+tooltip.tomsstorage.wireless_terminal.bound=Bound to: %d, %d, %d
+tooltip.tomsstorage.wireless_terminal.dimension=Dimension: %d
+message.tomsstorage.inventory_connector.slots=Free: %d slots/Total: %d slots
+message.tomsstorage.wireless_terminal.bound=Wireless terminal bound to %d, %d, %d.
+message.tomsstorage.wireless_terminal.unbound=Sneak-right-click a terminal to bind this wireless terminal.
+message.tomsstorage.wireless_terminal.too_far=The bound terminal is out of range.
+message.tomsstorage.wireless_terminal.wrong_dimension=The bound terminal is in another dimension.
+message.tomsstorage.wireless_terminal.missing=The bound terminal no longer exists.

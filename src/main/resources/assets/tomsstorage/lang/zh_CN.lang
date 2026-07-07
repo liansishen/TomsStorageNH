@@ -1,0 +1,28 @@
+itemGroup.tomsstorage=Tom的简易存储
+
+tile.tomsstorage.inventory_connector.name=存储驱动器
+tile.tomsstorage.storage_terminal.name=存储终端
+tile.tomsstorage.crafting_terminal.name=合成终端
+tile.tomsstorage.trim.name=存储桥连方块
+
+item.tomsstorage.wireless_terminal.name=无线终端
+tooltip.tomsstorage.sorting.0=排序：数量
+tooltip.tomsstorage.sorting.1=排序：名称
+tooltip.tomsstorage.direction.0=方向：正序
+tooltip.tomsstorage.direction.1=方向：倒序
+tooltip.tomsstorage.inventory_connector=将所有相邻的容器连接为一个整体。\使用存储终端访问所有物品。
+tooltip.tomsstorage.inventory_connector.range=最大读取容器范围：%d 格
+tooltip.tomsstorage.storage_terminal=用于访问你的物品。\将它放置在容器上。
+tooltip.tomsstorage.crafting_terminal=用于访问你的物品。\将它放置在容器上。\内置合成台。
+tooltip.tomsstorage.trim=配合存储驱动器连接容器。
+tooltip.tomsstorage.wireless_terminal=扩展你访问终端的范围。
+tooltip.tomsstorage.wireless_terminal.range=最大连接距离：%d 格
+tooltip.tomsstorage.wireless_terminal.unbound=潜行右键终端以绑定。
+tooltip.tomsstorage.wireless_terminal.bound=已绑定到：%d, %d, %d
+tooltip.tomsstorage.wireless_terminal.dimension=维度：%d
+message.tomsstorage.inventory_connector.slots=剩余: %d 格/总共: %d 格
+message.tomsstorage.wireless_terminal.bound=无线终端已绑定到 %d, %d, %d。
+message.tomsstorage.wireless_terminal.unbound=潜行右键终端以绑定此无线终端。
+message.tomsstorage.wireless_terminal.too_far=绑定的终端超出范围。
+message.tomsstorage.wireless_terminal.wrong_dimension=绑定的终端位于其他维度。
+message.tomsstorage.wireless_terminal.missing=绑定的终端已不存在。

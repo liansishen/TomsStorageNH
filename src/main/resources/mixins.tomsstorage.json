@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.hepdd.toms_storage.mixin",
+  "refmap": "mixins.tomsstorage.refmap.json",
+  "target": "@env(DEFAULT)",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [
+    "nei.AutoCraftingManagerMixin",
+    "nei.DefaultOverlayHandlerMixin"
+  ]
+}
