@@ -3,13 +3,11 @@ package com.hepdd.toms_storage.network;
 import java.util.ArrayList;
 import java.util.List;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.inventory.Container;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
 import com.hepdd.toms_storage.StoredItemStack;
-import com.hepdd.toms_storage.gui.ContainerStorageTerminal;
+import com.hepdd.toms_storage.TomsStorageMod;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
@@ -59,19 +57,23 @@ public class PacketTerminalData implements IMessage {
         ByteBufUtils.writeTag(buf, tag);
     }
 
+    public List<StoredItemStack> getStacks() {
+        return stacks;
+    }
+
+    public int getSorting() {
+        return sorting;
+    }
+
+    public String getSearch() {
+        return search;
+    }
+
     public static class Handler implements IMessageHandler<PacketTerminalData, IMessage> {
 
         @Override
         public IMessage onMessage(PacketTerminalData message, MessageContext ctx) {
-            Container container = Minecraft.getMinecraft().thePlayer.openContainer;
-            if (container instanceof ContainerStorageTerminal) {
-                ContainerStorageTerminal terminal = (ContainerStorageTerminal) container;
-                terminal.clientStacks = message.stacks;
-                terminal.getAutoCraftPreview()
-                    .clear();
-                terminal.sorting = message.sorting;
-                terminal.search = message.search;
-            }
+            TomsStorageMod.proxy.handleTerminalData(message);
             return null;
         }
     }

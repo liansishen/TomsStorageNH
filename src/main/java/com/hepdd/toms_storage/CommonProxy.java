@@ -6,6 +6,9 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.common.network.NetworkRegistry;
 
+import com.hepdd.toms_storage.network.PacketAutoCraftResult;
+import com.hepdd.toms_storage.network.PacketTerminalData;
+
 public class CommonProxy {
 
     public void preInit(FMLPreInitializationEvent event) {
@@ -24,6 +27,10 @@ public class CommonProxy {
     public void postInit(FMLPostInitializationEvent event) {
         ModRegistry.postInit();
     }
+
+    public void handleTerminalData(PacketTerminalData message) {}
+
+    public void handleAutoCraftResult(PacketAutoCraftResult message) {}
 
     public void serverStarting(FMLServerStartingEvent event) {}
 }

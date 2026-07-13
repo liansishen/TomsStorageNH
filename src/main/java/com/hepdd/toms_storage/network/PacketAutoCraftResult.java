@@ -1,11 +1,8 @@
 package com.hepdd.toms_storage.network;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.inventory.Container;
 import net.minecraft.nbt.NBTTagCompound;
 
-import com.hepdd.toms_storage.gui.ContainerStorageTerminal;
-import com.hepdd.toms_storage.nei.NEIDebug;
+import com.hepdd.toms_storage.TomsStorageMod;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
@@ -60,13 +57,7 @@ public class PacketAutoCraftResult implements IMessage {
 
         @Override
         public IMessage onMessage(PacketAutoCraftResult message, MessageContext ctx) {
-            Container container = Minecraft.getMinecraft().thePlayer.openContainer;
-            if (container instanceof ContainerStorageTerminal) {
-                if (!message.success)
-                    NEIDebug.log("autocraft result failed request=" + message.requestId + " reason=" + message.reason);
-                ((ContainerStorageTerminal) container).getAutoCraftPreview()
-                    .clearIfMatches(message.requestId);
-            }
+            TomsStorageMod.proxy.handleAutoCraftResult(message);
             return null;
         }
     }
