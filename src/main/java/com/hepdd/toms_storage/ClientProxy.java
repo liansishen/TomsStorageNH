@@ -38,8 +38,8 @@ public class ClientProxy extends CommonProxy {
     public void handleAutoCraftResult(PacketAutoCraftResult message) {
         Container container = Minecraft.getMinecraft().thePlayer.openContainer;
         if (container instanceof ContainerStorageTerminal) {
-            if (!message.isSuccess())
-                NEIDebug.log("autocraft result failed request=" + message.getRequestId() + " reason=" + message.getReason());
+            if (!message.isSuccess()) NEIDebug
+                .log("autocraft result failed request=" + message.getRequestId() + " reason=" + message.getReason());
             ((ContainerStorageTerminal) container).getAutoCraftPreview()
                 .clearIfMatches(message.getRequestId());
         }

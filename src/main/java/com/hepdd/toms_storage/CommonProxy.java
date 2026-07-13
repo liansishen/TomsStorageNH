@@ -1,13 +1,13 @@
 package com.hepdd.toms_storage;
 
+import com.hepdd.toms_storage.network.PacketAutoCraftResult;
+import com.hepdd.toms_storage.network.PacketTerminalData;
+
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.common.network.NetworkRegistry;
-
-import com.hepdd.toms_storage.network.PacketAutoCraftResult;
-import com.hepdd.toms_storage.network.PacketTerminalData;
 
 public class CommonProxy {
 

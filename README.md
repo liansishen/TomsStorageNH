@@ -11,6 +11,9 @@ This mod provides a lightweight centralized storage network, allowing players to
 ## Required Dependencies
 
 - NotEnoughItems
+- UniMixins
+
+NEI integration uses GTNH NEI APIs and client-side mixins. Use the GTNH NotEnoughItems line this mod was built against, or a compatible version that provides `AutoCraftingManager` and `DefaultOverlayHandler`.
 
 ## Features
 

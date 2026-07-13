@@ -34,7 +34,7 @@ public final class ModRegistry {
 
         @Override
         public Item getTabIconItem() {
-            return Item.getItemById(54);
+            return Item.getItemFromBlock(Blocks.chest);
         }
     };
 
