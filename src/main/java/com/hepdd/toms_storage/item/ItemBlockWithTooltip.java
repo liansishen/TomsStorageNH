@@ -33,6 +33,8 @@ public class ItemBlockWithTooltip extends ItemBlock {
             tooltip.add(
                 net.minecraft.client.resources.I18n
                     .format("tooltip.tomsstorage.inventory_connector.range", Config.inventoryConnectorRange));
+            tooltip
+                .add(net.minecraft.client.resources.I18n.format("tooltip.tomsstorage.inventory_connector.range_cable"));
         }
     }
 
@@ -41,6 +43,8 @@ public class ItemBlockWithTooltip extends ItemBlock {
         if (block == ModRegistry.craftingTerminal) return "tooltip.tomsstorage.crafting_terminal";
         if (block == ModRegistry.storageTerminal) return "tooltip.tomsstorage.storage_terminal";
         if (block == ModRegistry.trim) return "tooltip.tomsstorage.trim";
+        if (block == ModRegistry.inventoryCable) return "tooltip.tomsstorage.inventory_cable";
+        if (block == ModRegistry.inventoryHopper) return "tooltip.tomsstorage.inventory_hopper";
         return null;
     }
 }

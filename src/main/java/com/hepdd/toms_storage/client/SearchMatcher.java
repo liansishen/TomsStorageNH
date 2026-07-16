@@ -9,6 +9,7 @@ import cpw.mods.fml.common.Loader;
 final class SearchMatcher {
 
     private static final String NECH_MODID = "nech";
+    private static final int MAX_FALLBACK_SOURCE_LENGTH = 256;
     private static final NecAdapter NEC = createNecAdapter();
 
     private SearchMatcher() {}
@@ -24,9 +25,17 @@ final class SearchMatcher {
     private static boolean matches(String sourceText, String searchText, Pattern fallbackPattern, boolean tooltip) {
         if (sourceText == null) return false;
         if (searchText == null || searchText.isEmpty()) return true;
-        if (NEC != null && NEC.contains(sourceText, searchText, tooltip)) return true;
-        return fallbackPattern != null && fallbackPattern.matcher(sourceText)
-            .find();
+        String boundedText = sourceText.length() > MAX_FALLBACK_SOURCE_LENGTH
+            ? sourceText.substring(0, MAX_FALLBACK_SOURCE_LENGTH)
+            : sourceText;
+        if (NEC != null && NEC.contains(boundedText, searchText, tooltip)) return true;
+        if (fallbackPattern == null) return false;
+        try {
+            return fallbackPattern.matcher(boundedText)
+                .find();
+        } catch (RuntimeException | StackOverflowError ignored) {
+            return false;
+        }
     }
 
     private static NecAdapter createNecAdapter() {

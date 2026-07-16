@@ -32,6 +32,7 @@ public class ContainerStorageTerminal extends Container {
     public List<StoredItemStack> clientStacks = new ArrayList<>();
     public int sorting;
     public String search = "";
+    private int clientDataRevision;
 
     public ContainerStorageTerminal(InventoryPlayer playerInventory, TileEntityStorageTerminal terminal) {
         this.playerInventory = playerInventory;
@@ -129,6 +130,15 @@ public class ContainerStorageTerminal extends Container {
 
     public AutoCraftPreviewInventory getAutoCraftPreview() {
         return autoCraftPreview;
+    }
+
+    public void setClientStacks(List<StoredItemStack> stacks) {
+        clientStacks = stacks == null ? new ArrayList<StoredItemStack>() : stacks;
+        clientDataRevision++;
+    }
+
+    public int getClientDataRevision() {
+        return clientDataRevision;
     }
 
     protected int getPlayerSlotsY() {

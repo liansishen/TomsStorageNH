@@ -17,6 +17,10 @@ public class InventoryAdapter implements IStorageInventory {
         this.side = side == null ? ForgeDirection.UNKNOWN : side;
     }
 
+    public IInventory getInventory() {
+        return inventory;
+    }
+
     @Override
     public int getSlots() {
         return inventory.getSizeInventory();
@@ -82,7 +86,7 @@ public class InventoryAdapter implements IStorageInventory {
         if (!inventory.isItemValidForSlot(slot, stack)) return false;
         if (inventory instanceof ISidedInventory) {
             ISidedInventory sided = (ISidedInventory) inventory;
-            return sided.canInsertItem(slot, stack, side.ordinal());
+            return isSlotAccessible(sided, slot) && sided.canInsertItem(slot, stack, side.ordinal());
         }
         return true;
     }
@@ -92,12 +96,21 @@ public class InventoryAdapter implements IStorageInventory {
         if (inventory instanceof ISidedInventory) {
             ISidedInventory sided = (ISidedInventory) inventory;
             ItemStack stack = inventory.getStackInSlot(slot);
-            return stack != null && sided.canExtractItem(slot, stack, side.ordinal());
+            return stack != null && isSlotAccessible(sided, slot) && sided.canExtractItem(slot, stack, side.ordinal());
         }
         return true;
     }
 
     private boolean isSlotInRange(int slot) {
         return slot >= 0 && slot < inventory.getSizeInventory();
+    }
+
+    private boolean isSlotAccessible(ISidedInventory sided, int slot) {
+        int[] accessible = sided.getAccessibleSlotsFromSide(side.ordinal());
+        if (accessible == null) return false;
+        for (int candidate : accessible) {
+            if (candidate == slot) return true;
+        }
+        return false;
     }
 }

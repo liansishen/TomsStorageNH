@@ -1,6 +1,7 @@
 package com.hepdd.toms_storage;
 
 import com.hepdd.toms_storage.network.PacketAutoCraftResult;
+import com.hepdd.toms_storage.network.PacketConnectorRangePreview;
 import com.hepdd.toms_storage.network.PacketTerminalData;
 
 import cpw.mods.fml.common.event.FMLInitializationEvent;
@@ -31,6 +32,8 @@ public class CommonProxy {
     public void handleTerminalData(PacketTerminalData message) {}
 
     public void handleAutoCraftResult(PacketAutoCraftResult message) {}
+
+    public void handleConnectorRangePreview(PacketConnectorRangePreview message) {}
 
     public void serverStarting(FMLServerStartingEvent event) {}
 }

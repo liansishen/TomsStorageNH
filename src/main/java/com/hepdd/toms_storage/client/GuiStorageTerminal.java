@@ -4,8 +4,12 @@ import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.minecraft.client.gui.GuiButton;
@@ -23,6 +27,7 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
+import com.hepdd.toms_storage.Config;
 import com.hepdd.toms_storage.ModNetwork;
 import com.hepdd.toms_storage.StoredItemStack;
 import com.hepdd.toms_storage.StoredItemStack.IStoredItemStackComparator;
@@ -32,6 +37,7 @@ import com.hepdd.toms_storage.gui.SlotAction;
 import com.hepdd.toms_storage.network.PacketTerminalAction;
 import com.hepdd.toms_storage.tile.TileEntityStorageTerminal;
 
+import codechicken.nei.LayoutManager;
 import codechicken.nei.recipe.GuiCraftingRecipe;
 import codechicken.nei.recipe.GuiUsageRecipe;
 import cpw.mods.fml.common.Loader;
@@ -42,6 +48,9 @@ import cpw.mods.fml.common.registry.GameRegistry.UniqueIdentifier;
 public class GuiStorageTerminal extends GuiContainer {
 
     private static final int DIVISION_BASE = 1000;
+    private static final int[] SEARCH_PRESETS = { 0, Config.SEARCH_AUTO_FOCUS,
+        Config.SEARCH_AUTO_FOCUS | Config.SEARCH_KEEP_TEXT,
+        Config.SEARCH_AUTO_FOCUS | Config.SEARCH_KEEP_TEXT | Config.SEARCH_SYNC_NEI };
     private static final char[] POSTFIXES = "KMGTPE".toCharArray();
     private static final DecimalFormat FORMAT;
     private static final ResourceLocation STORAGE_GUI = new ResourceLocation(
@@ -67,6 +76,16 @@ public class GuiStorageTerminal extends GuiContainer {
     private int lastShiftClickButton = -1;
     private long lastShiftClickTime;
     private ItemStack lastShiftClickStack;
+    private final Map<StoredItemStack, SearchDocument> searchCache = new HashMap<>();
+    private Set<StoredItemStack> knownKinds = new HashSet<>();
+    private int lastClientDataRevision = -1;
+    private int lastServerSorting = -1;
+    private int searchMode;
+    private boolean searchMigrated;
+    private String originalNeiSearch;
+    private String lastTerminalSearch = "";
+    private String lastNeiSearch = "";
+    private String searchCacheContext = "";
 
     public GuiStorageTerminal(InventoryPlayer playerInventory, TileEntityStorageTerminal terminal) {
         this(new ContainerStorageTerminal(playerInventory, terminal));
@@ -83,19 +102,37 @@ public class GuiStorageTerminal extends GuiContainer {
     public void initGui() {
         super.initGui();
         Keyboard.enableRepeatEvents(true);
+        sortType = container.sorting & 1;
+        sortReversed = (container.sorting & 2) != 0;
+        lastServerSorting = container.sorting;
+        searchMode = Config.normalizeSearchMode(Config.terminalSearchMode);
+        searchMigrated = Config.terminalSearchMigrated;
         searchField = new GuiTextField(fontRendererObj, guiLeft + 82, guiTop + 6, 89, fontRendererObj.FONT_HEIGHT);
         searchField.setMaxStringLength(100);
-        searchField.setText(container.search);
+        String initialSearch = Config.hasSearchOption(Config.SEARCH_KEEP_TEXT) ? Config.terminalLastSearch : "";
+        if (!searchMigrated && initialSearch.isEmpty() && container.search != null && !container.search.isEmpty()) {
+            initialSearch = container.search;
+            searchMigrated = true;
+        }
+        searchField.setText(initialSearch);
         searchField.setEnableBackgroundDrawing(false);
         searchField.setTextColor(0xFFFFFF);
+        searchField.setFocused(hasSearchOption(Config.SEARCH_AUTO_FOCUS));
         buttonList.clear();
         buttonList.add(new TerminalButton(0, guiLeft - 18, guiTop + 5, 0));
         buttonList.add(new TerminalButton(1, guiLeft - 18, guiTop + 23, 1));
+        buttonList.add(new SearchModeButton(2, guiLeft - 18, guiTop + 41));
+        beginNeiSyncIfEnabled();
+        searchCacheContext = getSearchCacheContext();
+        knownKinds = new HashSet<>(container.clientStacks);
+        lastClientDataRevision = container.getClientDataRevision();
         updateSearch();
     }
 
     @Override
     public void onGuiClosed() {
+        saveSearchSettings();
+        restoreNeiSearch();
         super.onGuiClosed();
         Keyboard.enableRepeatEvents(false);
     }
@@ -104,12 +141,10 @@ public class GuiStorageTerminal extends GuiContainer {
     public void updateScreen() {
         super.updateScreen();
         searchField.updateCursorCounter();
-        boolean shiftDown = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
-        if (shiftDown) {
-            updateQuantitiesWithoutSorting();
-        } else {
-            updateSearch();
-        }
+        invalidateSearchCacheWhenNeeded();
+        migrateLegacySearchWhenAvailable();
+        synchronizeNeiSearch();
+        updateForChangedTerminalData();
     }
 
     @Override
@@ -118,6 +153,14 @@ public class GuiStorageTerminal extends GuiContainer {
             sortType = (sortType + 1) % SortingTypes.VALUES.length;
         } else if (button.id == 1) {
             sortReversed = !sortReversed;
+        } else if (button.id == 2) {
+            boolean wasSyncing = hasSearchOption(Config.SEARCH_SYNC_NEI);
+            searchMode = nextSearchPreset(searchMode);
+            if (!wasSyncing && hasSearchOption(Config.SEARCH_SYNC_NEI)) beginNeiSyncIfEnabled();
+            if (wasSyncing && !hasSearchOption(Config.SEARCH_SYNC_NEI)) restoreNeiSearch();
+            searchField.setFocused(hasSearchOption(Config.SEARCH_AUTO_FOCUS));
+            saveSearchSettings();
+            return;
         }
         ModNetwork.channel.sendToServer(PacketTerminalAction.sorting(packSorting()));
         updateSearch();
@@ -127,10 +170,6 @@ public class GuiStorageTerminal extends GuiContainer {
     protected void keyTyped(char typedChar, int keyCode) {
         if (keyCode == Keyboard.KEY_ESCAPE) {
             mc.thePlayer.closeScreen();
-            return;
-        }
-        if (searchField.textboxKeyTyped(typedChar, keyCode)) {
-            onSearchChanged();
             return;
         }
         if (hoveredStack >= 0 && hoveredStack < sortedStacks.size()) {
@@ -144,6 +183,10 @@ public class GuiStorageTerminal extends GuiContainer {
                 GuiUsageRecipe.openRecipeGui("item", stack);
                 return;
             }
+        }
+        if (searchField.textboxKeyTyped(typedChar, keyCode)) {
+            onSearchChanged();
+            return;
         }
         super.keyTyped(typedChar, keyCode);
     }
@@ -318,6 +361,8 @@ public class GuiStorageTerminal extends GuiContainer {
                 tooltip.add(I18n.format("tooltip.tomsstorage.sorting." + sortType));
             } else if (button.id == 1) {
                 tooltip.add(I18n.format("tooltip.tomsstorage.direction." + (sortReversed ? 1 : 0)));
+            } else if (button.id == 2) {
+                tooltip.add(I18n.format("tooltip.tomsstorage.search_mode." + searchMode));
             }
             if (!tooltip.isEmpty()) drawHoveringText(tooltip, mouseX, mouseY, fontRendererObj);
         }
@@ -345,75 +390,119 @@ public class GuiStorageTerminal extends GuiContainer {
         Pattern pattern = compilePattern(text.startsWith("@") ? text.substring(1) : text);
         boolean modSearch = text.startsWith("@");
         for (StoredItemStack stack : container.clientStacks) {
-            if (matches(stack.getStack(), pattern, modSearch)) sortedStacks.add(stack);
+            if (pattern == null || matches(getSearchDocument(stack.getStack(), !modSearch), pattern, modSearch)) {
+                sortedStacks.add(stack);
+            }
         }
         IStoredItemStackComparator comparator = SortingTypes.VALUES[sortType].create(sortReversed);
         Collections.sort(sortedStacks, comparator);
+        int maxRows = Math.max(
+            0,
+            (sortedStacks.size() + ContainerStorageTerminal.COLUMNS - 1) / ContainerStorageTerminal.COLUMNS
+                - ContainerStorageTerminal.ROWS);
+        if (scrollRow > maxRows) scrollRow = maxRows;
     }
 
     private void onSearchChanged() {
         scrollRow = 0;
-        ModNetwork.channel.sendToServer(PacketTerminalAction.search(searchField.getText()));
+        lastTerminalSearch = searchField.getText();
         updateSearch();
     }
 
     private void updateQuantitiesWithoutSorting() {
+        Map<StoredItemStack, StoredItemStack> currentByKind = new HashMap<>();
+        for (StoredItemStack current : container.clientStacks) currentByKind.put(current, current);
         List<StoredItemStack> updated = new ArrayList<>();
         for (StoredItemStack displayed : sortedStacks) {
-            StoredItemStack current = findCurrentStack(displayed);
+            StoredItemStack current = currentByKind.get(displayed);
             updated.add(new StoredItemStack(displayed.getStack(), current == null ? 0 : current.getQuantity()));
         }
         sortedStacks = updated;
     }
 
-    private StoredItemStack findCurrentStack(StoredItemStack displayed) {
-        for (StoredItemStack current : container.clientStacks) {
-            if (displayed.equals(current)) return current;
-        }
-        return null;
-    }
-
-    private boolean matches(ItemStack stack, Pattern pattern, boolean modSearch) {
-        if (stack == null) return false;
+    private boolean matches(SearchDocument document, Pattern pattern, boolean modSearch) {
+        if (document == null) return false;
         if (pattern == null) return true;
-        if (modSearch) return matchesMod(stack, pattern);
+        if (modSearch) return matchesMod(document, pattern);
         String searchText = searchField == null ? "" : searchField.getText();
-        if (SearchMatcher.matchesName(stack.getDisplayName(), searchText, pattern)) return true;
-        @SuppressWarnings("unchecked")
-        List<String> tooltip = stack.getTooltip(mc.thePlayer, mc.gameSettings.advancedItemTooltips);
-        for (String line : tooltip) {
+        if (SearchMatcher.matchesName(document.displayName, searchText, pattern)) return true;
+        for (String line : document.tooltip) {
             if (SearchMatcher.matchesTooltip(line, searchText, pattern)) return true;
         }
         return false;
     }
 
-    private boolean matchesMod(ItemStack stack, Pattern pattern) {
-        UniqueIdentifier identifier = GameRegistry.findUniqueIdentifierFor(stack.getItem());
-        if (identifier != null) {
-            if (pattern.matcher(identifier.modId.toLowerCase(Locale.ROOT))
-                .find()) return true;
-            ModContainer mod = Loader.instance()
-                .getIndexedModList()
-                .get(identifier.modId);
-            if (mod != null && pattern.matcher(
-                mod.getName()
-                    .toLowerCase(Locale.ROOT))
-                .find()) return true;
+    private SearchDocument getSearchDocument(ItemStack stack, boolean includeTooltip) {
+        if (stack == null) return null;
+        StoredItemStack key = new StoredItemStack(stack);
+        SearchDocument document = searchCache.get(key);
+        if (document == null) {
+            String displayName;
+            try {
+                displayName = stack.getDisplayName();
+            } catch (RuntimeException exception) {
+                displayName = "";
+            }
+            List<String> modTexts = new ArrayList<>();
+            try {
+                UniqueIdentifier identifier = GameRegistry.findUniqueIdentifierFor(stack.getItem());
+                if (identifier != null) {
+                    modTexts.add(identifier.modId);
+                    ModContainer mod = Loader.instance()
+                        .getIndexedModList()
+                        .get(identifier.modId);
+                    if (mod != null) modTexts.add(mod.getName());
+                }
+                modTexts.add(
+                    stack.getItem()
+                        .getUnlocalizedName());
+            } catch (RuntimeException ignored) {}
+            document = new SearchDocument(displayName, modTexts);
+            searchCache.put(key, document);
         }
-        return pattern.matcher(
-            stack.getItem()
-                .getUnlocalizedName()
-                .toLowerCase(Locale.ROOT))
-            .find();
+        if (includeTooltip && document.tooltip == null) {
+            try {
+                document.tooltip = new ArrayList<>(
+                    stack.getTooltip(mc.thePlayer, mc.gameSettings.advancedItemTooltips));
+            } catch (RuntimeException exception) {
+                document.tooltip = Collections.emptyList();
+            }
+        }
+        return document;
+    }
+
+    private boolean matchesMod(SearchDocument document, Pattern pattern) {
+        for (String text : document.modTexts) {
+            if (patternMatches(pattern, text)) return true;
+        }
+        return false;
+    }
+
+    private boolean patternMatches(Pattern pattern, String text) {
+        if (text == null) return false;
+        String bounded = text.length() > 256 ? text.substring(0, 256) : text;
+        try {
+            return pattern.matcher(bounded)
+                .find();
+        } catch (RuntimeException | StackOverflowError ignored) {
+            return false;
+        }
     }
 
     private Pattern compilePattern(String text) {
         if (text == null || text.isEmpty()) return null;
+        if (isPotentiallyUnsafeRegex(text)) {
+            return Pattern.compile(Pattern.quote(text.toLowerCase(Locale.ROOT)), Pattern.CASE_INSENSITIVE);
+        }
         try {
             return Pattern.compile(text.toLowerCase(Locale.ROOT), Pattern.CASE_INSENSITIVE);
         } catch (RuntimeException ignored) {
             return Pattern.compile(Pattern.quote(text.toLowerCase(Locale.ROOT)), Pattern.CASE_INSENSITIVE);
         }
+    }
+
+    private boolean isPotentiallyUnsafeRegex(String text) {
+        return text.contains("(?") || text.matches(".*\\\\[1-9].*") || text.matches(".*\\)[+*{].*");
     }
 
     private int getVirtualSlotAt(int mouseX, int mouseY) {
@@ -470,6 +559,136 @@ public class GuiStorageTerminal extends GuiContainer {
             && mouseY < searchField.yPosition + searchField.height;
     }
 
+    private boolean hasSearchOption(int option) {
+        return (searchMode & option) != 0;
+    }
+
+    private int nextSearchPreset(int current) {
+        for (int i = 0; i < SEARCH_PRESETS.length; i++) {
+            if (SEARCH_PRESETS[i] == current) return SEARCH_PRESETS[(i + 1) % SEARCH_PRESETS.length];
+        }
+        return SEARCH_PRESETS[0];
+    }
+
+    private void saveSearchSettings() {
+        String retained = hasSearchOption(Config.SEARCH_KEEP_TEXT) && searchField != null ? searchField.getText() : "";
+        Config.saveTerminalSearchSettings(searchMode, retained, searchMigrated);
+    }
+
+    private void migrateLegacySearchWhenAvailable() {
+        if (searchMigrated || container.getClientDataRevision() <= 0) return;
+        if (hasSearchOption(Config.SEARCH_KEEP_TEXT) && searchField.getText()
+            .isEmpty() && container.search != null && !container.search.isEmpty()) {
+            searchField.setText(container.search);
+            onSearchChanged();
+        }
+        searchMigrated = true;
+        saveSearchSettings();
+    }
+
+    private void updateForChangedTerminalData() {
+        int revision = container.getClientDataRevision();
+        if (revision == lastClientDataRevision) return;
+        lastClientDataRevision = revision;
+        boolean sortingChanged = container.sorting != lastServerSorting;
+        if (sortingChanged) {
+            lastServerSorting = container.sorting;
+            sortType = container.sorting & 1;
+            sortReversed = (container.sorting & 2) != 0;
+        }
+        Set<StoredItemStack> currentKinds = new HashSet<>(container.clientStacks);
+        boolean kindsChanged = !currentKinds.equals(knownKinds);
+        knownKinds = currentKinds;
+        if (kindsChanged || sortingChanged) {
+            searchCache.keySet()
+                .retainAll(currentKinds);
+            updateSearch();
+            return;
+        }
+        updateQuantitiesWithoutSorting();
+    }
+
+    private void invalidateSearchCacheWhenNeeded() {
+        String context = getSearchCacheContext();
+        if (context.equals(searchCacheContext)) return;
+        searchCacheContext = context;
+        searchCache.clear();
+        updateSearch();
+    }
+
+    private String getSearchCacheContext() {
+        try {
+            return mc.getLanguageManager()
+                .getCurrentLanguage()
+                .getLanguageCode() + ":"
+                + mc.gameSettings.advancedItemTooltips
+                + ":"
+                + mc.getResourcePackRepository()
+                    .getRepositoryEntries()
+                    .hashCode();
+        } catch (RuntimeException ignored) {
+            return Boolean.toString(mc.gameSettings.advancedItemTooltips);
+        }
+    }
+
+    private void beginNeiSyncIfEnabled() {
+        if (!hasSearchOption(Config.SEARCH_SYNC_NEI)) return;
+        String neiSearch = getNeiSearch();
+        if (neiSearch == null) return;
+        if (originalNeiSearch == null) originalNeiSearch = neiSearch;
+        String terminalSearch = searchField.getText();
+        if (terminalSearch.isEmpty() && !neiSearch.isEmpty()) {
+            searchField.setText(neiSearch);
+            onSearchChanged();
+            terminalSearch = neiSearch;
+        } else if (!terminalSearch.equals(neiSearch)) {
+            setNeiSearch(terminalSearch);
+        }
+        lastTerminalSearch = terminalSearch;
+        lastNeiSearch = terminalSearch;
+    }
+
+    private void synchronizeNeiSearch() {
+        if (!hasSearchOption(Config.SEARCH_SYNC_NEI)) return;
+        if (originalNeiSearch == null) {
+            beginNeiSyncIfEnabled();
+            return;
+        }
+        String neiSearch = getNeiSearch();
+        if (neiSearch == null) return;
+        String terminalSearch = searchField.getText();
+        if (!terminalSearch.equals(lastTerminalSearch)) {
+            setNeiSearch(terminalSearch);
+            lastTerminalSearch = terminalSearch;
+            lastNeiSearch = terminalSearch;
+        } else if (!neiSearch.equals(lastNeiSearch)) {
+            searchField.setText(neiSearch);
+            onSearchChanged();
+            lastTerminalSearch = neiSearch;
+            lastNeiSearch = neiSearch;
+        }
+    }
+
+    private String getNeiSearch() {
+        try {
+            return LayoutManager.searchField == null ? null : LayoutManager.searchField.text();
+        } catch (RuntimeException | LinkageError ignored) {
+            return null;
+        }
+    }
+
+    private void setNeiSearch(String text) {
+        try {
+            if (LayoutManager.searchField != null) LayoutManager.searchField.setText(text == null ? "" : text);
+        } catch (RuntimeException | LinkageError ignored) {}
+    }
+
+    private void restoreNeiSearch() {
+        if (originalNeiSearch == null) return;
+        setNeiSearch(originalNeiSearch);
+        originalNeiSearch = null;
+    }
+
     private void clearLastShiftClick() {
         lastShiftClickSlot = -1;
         lastShiftClickButton = -1;
@@ -516,6 +735,47 @@ public class GuiStorageTerminal extends GuiContainer {
             GL11.glEnable(GL11.GL_BLEND);
             OpenGlHelper.glBlendFunc(770, 771, 1, 0);
             drawTexturedModalRect(xPosition, yPosition, 194 + state * 16, 30 + tile * 16, width, height);
+        }
+    }
+
+    private class SearchModeButton extends GuiButton {
+
+        private SearchModeButton(int id, int x, int y) {
+            super(id, x, y, 16, 16, "");
+        }
+
+        @Override
+        public void drawButton(net.minecraft.client.Minecraft minecraft, int mouseX, int mouseY) {
+            if (!visible) return;
+            minecraft.getTextureManager()
+                .bindTexture(getGuiTexture());
+            GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+            GL11.glEnable(GL11.GL_BLEND);
+            OpenGlHelper.glBlendFunc(770, 771, 1, 0);
+            int textureX = 194;
+            int textureY = 62;
+            drawTexturedModalRect(xPosition, yPosition, textureX, textureY, width, height);
+            if ((searchMode & Config.SEARCH_AUTO_FOCUS) != 0) {
+                drawTexturedModalRect(xPosition + 1, yPosition + 1, textureX + 16, textureY, 14, 14);
+            }
+            if ((searchMode & Config.SEARCH_KEEP_TEXT) != 0) {
+                drawTexturedModalRect(xPosition + 1, yPosition + 1, textureX + 30, textureY, 14, 14);
+            }
+            if ((searchMode & Config.SEARCH_SYNC_NEI) != 0) {
+                drawTexturedModalRect(xPosition + 1, yPosition + 1, textureX + 44, textureY, 14, 14);
+            }
+        }
+    }
+
+    private static final class SearchDocument {
+
+        private final String displayName;
+        private List<String> tooltip;
+        private final List<String> modTexts;
+
+        private SearchDocument(String displayName, List<String> modTexts) {
+            this.displayName = displayName;
+            this.modTexts = modTexts;
         }
     }
 }

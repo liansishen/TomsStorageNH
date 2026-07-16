@@ -2,6 +2,7 @@ package com.hepdd.toms_storage;
 
 import com.hepdd.toms_storage.network.PacketAutoCraftRequest;
 import com.hepdd.toms_storage.network.PacketAutoCraftResult;
+import com.hepdd.toms_storage.network.PacketConnectorRangePreview;
 import com.hepdd.toms_storage.network.PacketTerminalAction;
 import com.hepdd.toms_storage.network.PacketTerminalData;
 
@@ -21,5 +22,10 @@ public final class ModNetwork {
         channel.registerMessage(PacketTerminalData.Handler.class, PacketTerminalData.class, 1, Side.CLIENT);
         channel.registerMessage(PacketAutoCraftRequest.Handler.class, PacketAutoCraftRequest.class, 2, Side.SERVER);
         channel.registerMessage(PacketAutoCraftResult.Handler.class, PacketAutoCraftResult.class, 3, Side.CLIENT);
+        channel.registerMessage(
+            PacketConnectorRangePreview.Handler.class,
+            PacketConnectorRangePreview.class,
+            4,
+            Side.CLIENT);
     }
 }
