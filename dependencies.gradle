@@ -34,13 +34,13 @@
  * For more details, see https://docs.gradle.org/8.0.1/userguide/java_library_plugin.html#sec:java_library_configurations_graph
  */
 dependencies {
-    runtimeOnlyNonPublishable("com.github.GTNewHorizons:GTNHLib:0.9.68:dev")
-    implementation("com.github.GTNewHorizons:NotEnoughItems:2.8.98-GTNH:dev")
-    runtimeOnlyNonPublishable("com.falsepattern:falsepatternlib-mc1.7.10:1.12.0:dev")
-    runtimeOnlyNonPublishable("com.github.GTNewHorizons:waila:1.19.30:dev")
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:GTNHLib:0.11.51:dev")
+    implementation("com.github.GTNewHorizons:NotEnoughItems:2.8.145-GTNH:dev")
+    runtimeOnlyNonPublishable("com.falsepattern:falsepatternlib-mc1.7.10:1.12.2:dev")
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:waila:1.19.34:dev")
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:WAILAPlugins:0.7.2:dev")
-    runtimeOnlyNonPublishable("com.github.GTNewHorizons:Angelica:2.1.32:dev")
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:Angelica:2.2.19:dev")
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:ironchest:6.1.13:dev")
-    runtimeOnlyNonPublishable("ganymedes01.etfuturum:Et-Futurum-Requiem:2.6.40-GTNH:dev")
-    runtimeOnlyNonPublishable("com.github.GTNewHorizons:TinkersConstruct:1.14.70-GTNH:dev")
+    runtimeOnlyNonPublishable("ganymedes01.etfuturum:Et-Futurum-Requiem:2.6.59-GTNH:dev")
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:TinkersConstruct:1.14.115-GTNH:dev")
 }
