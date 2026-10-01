@@ -75,7 +75,17 @@ Run the repository Gradle wrapper:
 ./gradlew build
 ```
 
-The reobfuscated release jar is generated under `build/libs`.
+The reobfuscated release jar is generated under `build/libs`. The build also packages the Modernity adapter under `build/resourcepacks`.
+
+## Modernity Resource Pack
+
+Releases include `Modernity-TomsStorage-<version>.zip`, a ready-to-install adapter for the storage-terminal and crafting-terminal GUIs. Place the ZIP in Minecraft's `resourcepacks` directory and enable it above Modernity. See the [adapter guide](resourcepacks/Modernity-Tom'sStorage/README.md) for installation details.
+
+Build the adapter separately with `./gradlew packageResourcePacks`. Set `-PresourcePackVersion=<version>` to override the archive version.
+
+## Releases
+
+Changes go through a pull request to `master` and successful CI verification before merging. Version tags are pushed on merged commits after master-branch CI passes. Each release includes the main, development and sources JARs together with the Modernity resource-pack ZIP. See [the release workflow](docs/releasing.md) for the full procedure.
 
 ## Credits and License
 

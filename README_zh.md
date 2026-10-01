@@ -75,7 +75,17 @@ NotEnoughCharacters 为可选依赖，用于增强中文与拼音搜索。
 ./gradlew build
 ```
 
-重混淆后的发布 Jar 会生成在 `build/libs` 目录中。
+重混淆后的发布 Jar 会生成在 `build/libs` 目录中。构建也会将 Modernity 适配材质包打包到 `build/resourcepacks`。
+
+## Modernity 适配材质包
+
+每个新版本会附带可直接安装的 `Modernity-TomsStorage-<版本>.zip`，提供存储终端与合成终端的 Modernity 风格界面材质。将 ZIP 放入 Minecraft 的 `resourcepacks` 目录，并在材质包列表中将适配包置于 Modernity 上方。安装细节见[适配包说明](resourcepacks/Modernity-Tom'sStorage/README.md)。
+
+可以运行 `./gradlew packageResourcePacks` 单独打包；使用 `-PresourcePackVersion=<版本>` 指定 ZIP 的版本。
+
+## 发布流程
+
+改动通过面向 `master` 的 PR 提交，等待 CI 验证通过后合并。合并提交的主分支 CI 通过后，再推送版本标签触发发布。每个版本同时提供主 Jar、开发 Jar、源码 Jar 和 Modernity 材质包 ZIP。完整步骤见[发布说明](docs/releasing.md)。
 
 ## 致谢与许可证
 
