@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: |
+            8
+            17
+            21
+            25
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Build, test and check formatting
+        run: |
+          chmod +x gradlew
+          ./gradlew --build-cache --console=plain setupCIWorkspace build
+      - name: Upload verification reports and resource pack
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: verification-artifacts
+          path: |
+            build/test-results/test/
+            build/reports/tests/
+            build/reports/checkstyle/
+            build/resourcepacks/*.zip
