@@ -1,4 +1,5 @@
 itemGroup.tomsstorage=Tom's Simple Storage
+gui.tomsstorage.terminal=Terminal
 
 tile.tomsstorage.inventory_connector.name=Inventory Connector
 tile.tomsstorage.storage_terminal.name=Storage Terminal
@@ -22,6 +23,7 @@ tooltip.tomsstorage.search_mode.0=Standard search
 tooltip.tomsstorage.search_mode.1=Auto search
 tooltip.tomsstorage.search_mode.3=Auto search, keep text
 tooltip.tomsstorage.search_mode.7=Auto search, keep text, synchronize NEI
+tooltip.tomsstorage.clear_grid=Clear crafting grid
 tooltip.tomsstorage.inventory_connector=Connects all of the touching inventories into one.\nUse the Storage Terminal to access\nall of your items.
 tooltip.tomsstorage.inventory_connector.range=Max scan range: %d blocks
 tooltip.tomsstorage.inventory_connector.range_cable=This radius applies to local inventories/Trim only; cables use a node limit.

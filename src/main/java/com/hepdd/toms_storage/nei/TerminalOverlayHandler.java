@@ -9,6 +9,7 @@ import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.item.ItemStack;
 
 import com.hepdd.toms_storage.StoredItemStack;
+import com.hepdd.toms_storage.gui.ContainerCraftingTerminal;
 import com.hepdd.toms_storage.gui.ContainerStorageTerminal;
 
 import codechicken.nei.PositionedStack;
@@ -19,7 +20,11 @@ import codechicken.nei.recipe.IRecipeHandler;
 public class TerminalOverlayHandler extends DefaultOverlayHandler {
 
     public TerminalOverlayHandler() {
-        super(1, 105);
+        this(ContainerCraftingTerminal.GRID_X - 25, ContainerCraftingTerminal.GUI_HEIGHT - 161);
+    }
+
+    public TerminalOverlayHandler(int x, int y) {
+        super(x, y);
     }
 
     @Override

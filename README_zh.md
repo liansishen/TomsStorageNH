@@ -20,6 +20,8 @@ NEI 集成使用 GTNH NEI API 和客户端 Mixin。兼容版本需要提供 `Aut
 
 NotEnoughCharacters 为可选依赖，用于增强中文与拼音搜索。
 
+Gregory Tweaks For Crafting（`craftingtweaks`）为可选依赖，可在合成格左侧提供旋转、均分与清空按钮。
+
 ## 主要功能
 
 ### 存储网络

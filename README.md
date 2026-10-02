@@ -20,6 +20,8 @@ The NEI integration uses GTNH NEI APIs and client-side mixins. A compatible NEI 
 
 NotEnoughCharacters is optional and improves Chinese and pinyin searching.
 
+Gregory Tweaks For Crafting (`craftingtweaks`) is optional and adds rotate, balance and clear buttons to the left of the crafting grid.
+
 ## Features
 
 ### Storage Network

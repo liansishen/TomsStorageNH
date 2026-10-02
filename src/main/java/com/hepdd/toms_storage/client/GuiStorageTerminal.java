@@ -107,7 +107,12 @@ public class GuiStorageTerminal extends GuiContainer {
         lastServerSorting = container.sorting;
         searchMode = Config.normalizeSearchMode(Config.terminalSearchMode);
         searchMigrated = Config.terminalSearchMigrated;
-        searchField = new GuiTextField(fontRendererObj, guiLeft + 82, guiTop + 6, 89, fontRendererObj.FONT_HEIGHT);
+        searchField = new GuiTextField(
+            fontRendererObj,
+            guiLeft + getStorageGridX() + 74,
+            guiTop + 6,
+            getSearchFieldWidth(),
+            fontRendererObj.FONT_HEIGHT);
         searchField.setMaxStringLength(100);
         String initialSearch = Config.hasSearchOption(Config.SEARCH_KEEP_TEXT) ? Config.terminalLastSearch : "";
         if (!searchMigrated && initialSearch.isEmpty() && container.search != null && !container.search.isEmpty()) {
@@ -160,6 +165,8 @@ public class GuiStorageTerminal extends GuiContainer {
             if (wasSyncing && !hasSearchOption(Config.SEARCH_SYNC_NEI)) restoreNeiSearch();
             searchField.setFocused(hasSearchOption(Config.SEARCH_AUTO_FOCUS));
             saveSearchSettings();
+            return;
+        } else {
             return;
         }
         ModNetwork.channel.sendToServer(PacketTerminalAction.sorting(packSorting()));
@@ -280,7 +287,7 @@ public class GuiStorageTerminal extends GuiContainer {
             int maxRows = Math.max(
                 0,
                 (sortedStacks.size() + ContainerStorageTerminal.COLUMNS - 1) / ContainerStorageTerminal.COLUMNS
-                    - ContainerStorageTerminal.ROWS);
+                    - getStorageRows());
             scrollRow -= wheel > 0 ? 1 : -1;
             if (scrollRow < 0) scrollRow = 0;
             if (scrollRow > maxRows) scrollRow = maxRows;
@@ -289,13 +296,22 @@ public class GuiStorageTerminal extends GuiContainer {
 
     @Override
     protected void drawGuiContainerForegroundLayer(int mouseX, int mouseY) {
-        for (int i = 0; i < ContainerStorageTerminal.VISIBLE_STACKS; i++) {
+        for (int i = 0; i < getStorageRows() * ContainerStorageTerminal.COLUMNS; i++) {
             int index = scrollRow * ContainerStorageTerminal.COLUMNS + i;
             if (index >= sortedStacks.size()) break;
-            int x = 8 + (i % ContainerStorageTerminal.COLUMNS) * 18;
+            int x = getStorageGridX() + (i % ContainerStorageTerminal.COLUMNS) * 18;
             int y = 18 + (i / ContainerStorageTerminal.COLUMNS) * 18;
-            if (hoveredStack == index) drawRect(x, y, x + 16, y + 16, 0x80FFFFFF);
             drawStoredStack(sortedStacks.get(index), x, y);
+        }
+        int slot = getVirtualSlotAt(mouseX, mouseY);
+        if (slot >= 0) {
+            int x = getStorageGridX() + (slot % ContainerStorageTerminal.COLUMNS) * 18;
+            int y = 18 + (slot / ContainerStorageTerminal.COLUMNS) * 18;
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+            GL11.glColorMask(true, true, true, false);
+            drawGradientRect(x, y, x + 16, y + 16, 0x80FFFFFF, 0x80FFFFFF);
+            GL11.glColorMask(true, true, true, true);
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
         }
     }
 
@@ -305,8 +321,24 @@ public class GuiStorageTerminal extends GuiContainer {
         mc.getTextureManager()
             .bindTexture(getGuiTexture());
         GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-        drawTexturedModalRect(guiLeft, guiTop, 0, 0, xSize, ySize);
+        drawTerminalBackground();
         drawScrollBar();
+    }
+
+    protected void drawTerminalBackground() {
+        drawTexturedModalRect(guiLeft, guiTop, 0, 0, xSize, ySize);
+    }
+
+    protected int getStorageRows() {
+        return ContainerStorageTerminal.ROWS;
+    }
+
+    protected int getStorageGridX() {
+        return 8;
+    }
+
+    protected int getSearchFieldWidth() {
+        return 89;
     }
 
     protected ResourceLocation getGuiTexture() {
@@ -317,8 +349,8 @@ public class GuiStorageTerminal extends GuiContainer {
         int maxRows = Math.max(
             0,
             (sortedStacks.size() + ContainerStorageTerminal.COLUMNS - 1) / ContainerStorageTerminal.COLUMNS
-                - ContainerStorageTerminal.ROWS);
-        int scrollOffset = maxRows == 0 ? 0 : (int) ((72.0F * scrollRow) / maxRows);
+                - getStorageRows());
+        int scrollOffset = maxRows == 0 ? 0 : (int) (((getStorageRows() * 18 - 18.0F) * scrollRow) / maxRows);
         float previousZLevel = zLevel;
         float previousItemZLevel = itemRender.zLevel;
         mc.getTextureManager()
@@ -328,7 +360,13 @@ public class GuiStorageTerminal extends GuiContainer {
         GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         zLevel = 0.0F;
         itemRender.zLevel = 0.0F;
-        drawTexturedModalRect(guiLeft + 174, guiTop + 18 + scrollOffset, maxRows > 0 ? 232 : 244, 0, 12, 15);
+        drawTexturedModalRect(
+            guiLeft + getStorageGridX() + 166,
+            guiTop + 18 + scrollOffset,
+            maxRows > 0 ? 232 : 244,
+            0,
+            12,
+            15);
         zLevel = previousZLevel;
         itemRender.zLevel = previousItemZLevel;
     }
@@ -353,19 +391,25 @@ public class GuiStorageTerminal extends GuiContainer {
         for (Object object : buttonList) {
             if (!(object instanceof GuiButton)) continue;
             GuiButton button = (GuiButton) object;
+            if (!button.visible) continue;
             if (mouseX < button.xPosition || mouseY < button.yPosition
                 || mouseX >= button.xPosition + button.width
                 || mouseY >= button.yPosition + button.height) continue;
-            List<String> tooltip = new ArrayList<>();
-            if (button.id == 0) {
-                tooltip.add(I18n.format("tooltip.tomsstorage.sorting." + sortType));
-            } else if (button.id == 1) {
-                tooltip.add(I18n.format("tooltip.tomsstorage.direction." + (sortReversed ? 1 : 0)));
-            } else if (button.id == 2) {
-                tooltip.add(I18n.format("tooltip.tomsstorage.search_mode." + searchMode));
-            }
+            List<String> tooltip = getButtonTooltip(button);
             if (!tooltip.isEmpty()) drawHoveringText(tooltip, mouseX, mouseY, fontRendererObj);
         }
+    }
+
+    protected List<String> getButtonTooltip(GuiButton button) {
+        List<String> tooltip = new ArrayList<>();
+        if (button.id == 0) {
+            tooltip.add(I18n.format("tooltip.tomsstorage.sorting." + sortType));
+        } else if (button.id == 1) {
+            tooltip.add(I18n.format("tooltip.tomsstorage.direction." + (sortReversed ? 1 : 0)));
+        } else if (button.id == 2) {
+            tooltip.add(I18n.format("tooltip.tomsstorage.search_mode." + searchMode));
+        }
+        return tooltip;
     }
 
     private void drawStackSize(String stackSize, int x, int y) {
@@ -399,7 +443,7 @@ public class GuiStorageTerminal extends GuiContainer {
         int maxRows = Math.max(
             0,
             (sortedStacks.size() + ContainerStorageTerminal.COLUMNS - 1) / ContainerStorageTerminal.COLUMNS
-                - ContainerStorageTerminal.ROWS);
+                - getStorageRows());
         if (scrollRow > maxRows) scrollRow = maxRows;
     }
 
@@ -506,13 +550,12 @@ public class GuiStorageTerminal extends GuiContainer {
     }
 
     private int getVirtualSlotAt(int mouseX, int mouseY) {
-        int relX = mouseX - guiLeft - 8;
+        int relX = mouseX - guiLeft - getStorageGridX();
         int relY = mouseY - guiTop - 18;
         if (relX < 0 || relY < 0) return -1;
         int col = relX / 18;
         int row = relY / 18;
-        if (col < 0 || col >= ContainerStorageTerminal.COLUMNS || row < 0 || row >= ContainerStorageTerminal.ROWS)
-            return -1;
+        if (col < 0 || col >= ContainerStorageTerminal.COLUMNS || row < 0 || row >= getStorageRows()) return -1;
         return row * ContainerStorageTerminal.COLUMNS + col;
     }
 
@@ -524,18 +567,16 @@ public class GuiStorageTerminal extends GuiContainer {
     }
 
     private boolean isMouseInItemGrid(int mouseX, int mouseY) {
-        int relX = mouseX - guiLeft - 8;
+        int relX = mouseX - guiLeft - getStorageGridX();
         int relY = mouseY - guiTop - 18;
-        return relX >= 0 && relY >= 0
-            && relX < ContainerStorageTerminal.COLUMNS * 18
-            && relY < ContainerStorageTerminal.ROWS * 18;
+        return relX >= 0 && relY >= 0 && relX < ContainerStorageTerminal.COLUMNS * 18 && relY < getStorageRows() * 18;
     }
 
     private boolean isMouseInScrollArea(int mouseX, int mouseY) {
         if (isMouseInItemGrid(mouseX, mouseY)) return true;
-        int relX = mouseX - guiLeft - 174;
+        int relX = mouseX - guiLeft - getStorageGridX() - 166;
         int relY = mouseY - guiTop - 18;
-        return relX >= 0 && relY >= 0 && relX < 12 && relY < ContainerStorageTerminal.ROWS * 18;
+        return relX >= 0 && relY >= 0 && relX < 12 && relY < getStorageRows() * 18;
     }
 
     private Slot getPlayerSlotAt(int mouseX, int mouseY) {
@@ -752,17 +793,15 @@ public class GuiStorageTerminal extends GuiContainer {
             GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
             GL11.glEnable(GL11.GL_BLEND);
             OpenGlHelper.glBlendFunc(770, 771, 1, 0);
-            int textureX = 194;
-            int textureY = 62;
-            drawTexturedModalRect(xPosition, yPosition, textureX, textureY, width, height);
-            if ((searchMode & Config.SEARCH_AUTO_FOCUS) != 0) {
-                drawTexturedModalRect(xPosition + 1, yPosition + 1, textureX + 16, textureY, 14, 14);
-            }
-            if ((searchMode & Config.SEARCH_KEEP_TEXT) != 0) {
-                drawTexturedModalRect(xPosition + 1, yPosition + 1, textureX + 30, textureY, 14, 14);
-            }
-            if ((searchMode & Config.SEARCH_SYNC_NEI) != 0) {
-                drawTexturedModalRect(xPosition + 1, yPosition + 1, textureX + 44, textureY, 14, 14);
+            drawTexturedModalRect(xPosition, yPosition, 194, 62, width, height);
+            if (searchMode != 0) {
+                func_152125_a(xPosition + 2, yPosition + 2, 196, 64, 1, 1, 12, 10, 256, 256);
+                int iconX = (searchMode & Config.SEARCH_SYNC_NEI) != 0 ? 240
+                    : (searchMode & Config.SEARCH_KEEP_TEXT) != 0 ? 226 : 211;
+                int iconY = (searchMode & Config.SEARCH_SYNC_NEI) != 0 ? 60 : 65;
+                GL11.glColorMask(true, true, true, false);
+                drawTexturedModalRect(xPosition + 2, yPosition + 3, iconX, iconY, 12, 9);
+                GL11.glColorMask(true, true, true, true);
             }
         }
     }
