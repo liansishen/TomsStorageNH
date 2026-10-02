@@ -21,6 +21,13 @@ import com.hepdd.toms_storage.tile.TileEntityCraftingTerminal;
 public class ContainerCraftingTerminal extends ContainerStorageTerminal {
 
     private static final int TERMINAL_SOURCE_SLOT_BASE = -2000;
+    public static final int GUI_WIDTH = 195;
+    public static final int MAX_STORAGE_ROWS = 6;
+    public static final int BASE_HEIGHT = 188;
+    public static final int GUI_HEIGHT = BASE_HEIGHT + MAX_STORAGE_ROWS * 18;
+    public static final int GRID_X = 37;
+    public static final int GRID_SLOT_START = 37;
+    private int guiHeight = GUI_HEIGHT;
 
     public final InventoryCrafting craftMatrix = new InventoryCrafting(this, 3, 3);
     public final InventoryCraftResult craftResult = new InventoryCraftResult();
@@ -33,10 +40,11 @@ public class ContainerCraftingTerminal extends ContainerStorageTerminal {
         world = terminal.getWorldObj();
 
         resultSlot = addSlotToContainer(
-            new SlotCrafting(playerInventory.player, craftMatrix, craftResult, 0, 120, 129));
+            new SlotCrafting(playerInventory.player, craftMatrix, craftResult, 0, 131, GUI_HEIGHT - 137));
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 3; col++) {
-                addSlotToContainer(new Slot(craftMatrix, col + row * 3, 26 + col * 18, 111 + row * 18));
+                addSlotToContainer(
+                    new Slot(craftMatrix, col + row * 3, GRID_X + col * 18, GUI_HEIGHT - 155 + row * 18));
             }
         }
         onCraftMatrixChanged(craftMatrix);
@@ -44,7 +52,13 @@ public class ContainerCraftingTerminal extends ContainerStorageTerminal {
 
     @Override
     protected int getPlayerSlotsY() {
-        return 174;
+        return GUI_HEIGHT - 83;
+    }
+
+    public void setGuiHeight(int height) {
+        int offset = height - guiHeight;
+        for (Slot slot : inventorySlots) slot.yDisplayPosition += offset;
+        guiHeight = height;
     }
 
     @Override
