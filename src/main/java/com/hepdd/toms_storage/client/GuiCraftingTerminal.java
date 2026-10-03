@@ -3,6 +3,7 @@ package com.hepdd.toms_storage.client;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -15,6 +16,7 @@ import net.minecraft.client.renderer.texture.TextureUtil;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.client.resources.IResourceManager;
 import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.inventory.Slot;
 import net.minecraft.util.ResourceLocation;
 
 import org.lwjgl.opengl.GL11;
@@ -60,6 +62,7 @@ public class GuiCraftingTerminal extends GuiStorageTerminal {
         ((ContainerCraftingTerminal) container).setGuiHeight(ySize);
         super.initGui();
         buttonList.add(new ClearButton(10, guiLeft + 92, guiTop + ySize - 156));
+        buttonList.add(new AutoRefillButton(11, guiLeft + 135, guiTop + ySize - 154));
         API.registerGuiOverlay(GuiCraftingTerminal.class, "crafting", ContainerCraftingTerminal.GRID_X, ySize - 155);
         API.setGuiOffset(GuiCraftingTerminal.class, ContainerCraftingTerminal.GRID_X, ySize - 155);
         API.registerGuiOverlayHandler(
@@ -84,9 +87,32 @@ public class GuiCraftingTerminal extends GuiStorageTerminal {
     }
 
     @Override
+    protected void handleMouseClick(Slot slot, int slotId, int clickedButton, int clickType) {
+        ContainerCraftingTerminal crafting = (ContainerCraftingTerminal) container;
+        if (slot != null && slot.slotNumber == ContainerCraftingTerminal.GRID_SLOT_START - 1) {
+            if (clickType != 6) {
+                crafting.beginCraftingClick();
+                ModNetwork.channel
+                    .sendToServer(PacketTerminalAction.craftResult(container.windowId, clickedButton, clickType));
+            }
+            return;
+        }
+        // Vanilla prediction needs the confirmed cursor from outstanding result clicks.
+        if (crafting.hasPendingCraftingClick()) return;
+        super.handleMouseClick(slot, slotId, clickedButton, clickType);
+    }
+
+    @Override
     protected void actionPerformed(GuiButton button) {
         if (button.id == 10) {
             ModNetwork.channel.sendToServer(new PacketTerminalAction(SlotAction.CLEAR_GRID, null));
+            return;
+        }
+        if (button.id == 11) {
+            ContainerCraftingTerminal crafting = (ContainerCraftingTerminal) container;
+            boolean enabled = !crafting.isAutoRefillEnabled();
+            crafting.setAutoRefillEnabled(enabled);
+            ModNetwork.channel.sendToServer(PacketTerminalAction.autoRefill(crafting.windowId, enabled));
             return;
         }
         super.actionPerformed(button);
@@ -95,6 +121,12 @@ public class GuiCraftingTerminal extends GuiStorageTerminal {
     @Override
     protected List<String> getButtonTooltip(GuiButton button) {
         if (button.id == 10) return Collections.singletonList(I18n.format("tooltip.tomsstorage.clear_grid"));
+        if (button.id == 11) {
+            boolean enabled = ((ContainerCraftingTerminal) container).isAutoRefillEnabled();
+            return Arrays.asList(
+                I18n.format("tooltip.tomsstorage.auto_refill." + (enabled ? 1 : 0)),
+                I18n.format("tooltip.tomsstorage.auto_refill.description"));
+        }
         return super.getButtonTooltip(button);
     }
 
@@ -141,6 +173,23 @@ public class GuiCraftingTerminal extends GuiStorageTerminal {
         return CRAFTING_GUI;
     }
 
+    private class AutoRefillButton extends ClearButton {
+
+        private AutoRefillButton(int id, int x, int y) {
+            super(id, x, y);
+        }
+
+        @Override
+        protected void drawIcon() {
+            if (!((ContainerCraftingTerminal) container).isAutoRefillEnabled()) return;
+            drawRect(4, 6, 6, 10, 0xFFFFFFFF);
+            drawRect(6, 10, 8, 12, 0xFFFFFFFF);
+            drawRect(8, 8, 10, 10, 0xFFFFFFFF);
+            drawRect(10, 6, 12, 8, 0xFFFFFFFF);
+            drawRect(12, 4, 14, 6, 0xFFFFFFFF);
+        }
+    }
+
     private class ClearButton extends GuiButton {
 
         private ClearButton(int id, int x, int y) {
@@ -165,7 +214,7 @@ public class GuiCraftingTerminal extends GuiStorageTerminal {
             GL11.glTranslatef(xPosition, yPosition, 0.0F);
             GL11.glScalef(0.5F, 0.5F, 1.0F);
             drawTexturedModalRect(0, 0, 240, 240, 16, 16);
-            drawTexturedModalRect(0, 0, 96, 0, 16, 16);
+            drawIcon();
             GL11.glPopMatrix();
             if (hover == 2) {
                 GL11.glColorMask(true, true, true, false);
@@ -173,6 +222,10 @@ public class GuiCraftingTerminal extends GuiStorageTerminal {
                 GL11.glColorMask(true, true, true, true);
                 GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
             }
+        }
+
+        protected void drawIcon() {
+            drawTexturedModalRect(0, 0, 96, 0, 16, 16);
         }
     }
 

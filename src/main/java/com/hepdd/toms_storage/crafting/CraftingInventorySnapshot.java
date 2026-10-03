@@ -1,7 +1,11 @@
 package com.hepdd.toms_storage.crafting;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
@@ -18,9 +22,20 @@ public final class CraftingInventorySnapshot {
 
     public CraftingInventorySnapshot(TileEntityStorageTerminal terminal, EntityPlayerMP player,
         boolean usePlayerInventory) {
-        this.usePlayerInventory = usePlayerInventory;
+        this(
+            terminal.getStacks(),
+            usePlayerInventory ? Arrays.asList(player.inventory.mainInventory) : Collections.emptyList(),
+            usePlayerInventory);
+    }
 
-        for (StoredItemStack stored : terminal.getStacks()) {
+    public CraftingInventorySnapshot(List<StoredItemStack> storedStacks, List<ItemStack> playerStacks) {
+        this(storedStacks, playerStacks, true);
+    }
+
+    private CraftingInventorySnapshot(List<StoredItemStack> storedStacks, List<ItemStack> playerStacks,
+        boolean usePlayerInventory) {
+        this.usePlayerInventory = usePlayerInventory;
+        for (StoredItemStack stored : storedStacks) {
             ItemStack stack = stored.getStack();
             if (stack != null && stored.getQuantity() > 0) {
                 terminalStacks.add(new Entry(stack, (int) Math.min(Integer.MAX_VALUE, stored.getQuantity()), -1));
@@ -28,9 +43,9 @@ public final class CraftingInventorySnapshot {
         }
 
         if (usePlayerInventory) {
-            for (int i = 0; i < player.inventory.mainInventory.length; i++) {
-                ItemStack stack = player.inventory.mainInventory[i];
-                if (stack != null && stack.stackSize > 0) playerStacks.add(new Entry(stack, stack.stackSize, i));
+            for (int i = 0; i < playerStacks.size(); i++) {
+                ItemStack stack = playerStacks.get(i);
+                if (stack != null && stack.stackSize > 0) this.playerStacks.add(new Entry(stack, stack.stackSize, i));
             }
         }
     }
@@ -48,6 +63,30 @@ public final class CraftingInventorySnapshot {
             }
         }
         return null;
+    }
+
+    public Extraction reserveLargest(ItemStack[] candidates) {
+        List<Entry> entries = new ArrayList<>(terminalStacks);
+        if (usePlayerInventory) entries.addAll(playerStacks);
+        Map<StoredItemStack, Long> amounts = new HashMap<>();
+        for (Entry entry : entries) {
+            amounts.merge(new StoredItemStack(entry.stack), (long) entry.amount, Long::sum);
+        }
+        ItemStack selected = null;
+        long largest = 0;
+        for (ItemStack candidate : candidates) {
+            if (candidate == null) continue;
+            int amount = Math.max(1, candidate.stackSize);
+            for (Entry entry : entries) {
+                if (entry.amount < amount || !CraftingStackMatcher.matchesIngredient(candidate, entry.stack)) continue;
+                long crafts = amounts.get(new StoredItemStack(entry.stack)) / amount;
+                if (crafts > largest) {
+                    largest = crafts;
+                    selected = StorageItemUtils.copyWithSize(entry.stack, amount);
+                }
+            }
+        }
+        return selected == null ? null : reserve(new ItemStack[] { selected });
     }
 
     public void addTerminal(ItemStack stack) {

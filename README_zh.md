@@ -14,6 +14,7 @@ Tom's Simple Storage 1.7.10 Port 是面向 Minecraft 1.7.10 与 GT New Horizons 
 ## 必需依赖
 
 - GTNH 分支或兼容版本的 NotEnoughItems
+- GTNHLib
 - UniMixins
 
 NEI 集成使用 GTNH NEI API 和客户端 Mixin。兼容版本需要提供 `AutoCraftingManager` 与 `DefaultOverlayHandler`。
