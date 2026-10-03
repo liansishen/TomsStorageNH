@@ -18,7 +18,6 @@ public class Config {
     public static boolean debugNeiAutocrafting = false;
     public static int inventoryConnectorRange = 16;
     public static int maxInventoryCableNodes = 1024;
-    public static int wirelessReach = 16;
     public static int terminalSearchMode = SEARCH_PRESET_AUTO_KEEP;
     public static String terminalLastSearch = "";
     public static boolean terminalSearchMigrated = false;
@@ -56,8 +55,6 @@ public class Config {
             Configuration.CATEGORY_GENERAL,
             debugNeiAutocrafting,
             "Log NEI autocrafting integration debug output.");
-        wirelessReach = configuration
-            .getInt("wirelessReach", Configuration.CATEGORY_GENERAL, wirelessReach, 4, 64, "Wireless terminal reach.");
         terminalSearchMode = configuration.getInt(
             "terminalSearchMode",
             "client",

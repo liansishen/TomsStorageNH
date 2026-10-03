@@ -13,7 +13,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.util.ForgeDirection;
 
-import com.hepdd.toms_storage.Config;
 import com.hepdd.toms_storage.StoredItemStack;
 import com.hepdd.toms_storage.block.BlockStorageTerminal;
 import com.hepdd.toms_storage.inventory.IStorageInventory;
@@ -77,10 +76,9 @@ public class TileEntityStorageTerminal extends TileEntity {
     }
 
     public boolean canInteractWith(EntityPlayer player) {
-        if (worldObj.getTileEntity(xCoord, yCoord, zCoord) != this) return false;
-        double maxDistance = ItemWirelessTerminal.isPlayerHolding(player) ? Config.wirelessReach * Config.wirelessReach
-            : 64.0D;
-        return player.getDistanceSq(xCoord + 0.5D, yCoord + 0.5D, zCoord + 0.5D) <= maxDistance;
+        if (player.worldObj != worldObj || worldObj.getTileEntity(xCoord, yCoord, zCoord) != this) return false;
+        int reach = ItemWirelessTerminal.getPlayerReach(player);
+        return player.getDistanceSq(xCoord + 0.5D, yCoord + 0.5D, zCoord + 0.5D) <= reach * reach;
     }
 
     public int getSorting() {

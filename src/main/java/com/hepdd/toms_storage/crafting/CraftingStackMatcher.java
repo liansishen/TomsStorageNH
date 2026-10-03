@@ -4,6 +4,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraftforge.oredict.OreDictionary;
 
 import com.hepdd.toms_storage.StorageItemUtils;
+import com.hepdd.toms_storage.item.ItemWirelessTerminal;
 
 public final class CraftingStackMatcher {
 
@@ -39,6 +40,9 @@ public final class CraftingStackMatcher {
     }
 
     private static boolean nbtMatches(ItemStack recipeItem, ItemStack candidate) {
+        if (ItemWirelessTerminal.isLevelTemplate(recipeItem)) {
+            return ItemWirelessTerminal.getLevel(recipeItem) == ItemWirelessTerminal.getLevel(candidate);
+        }
         return !recipeItem.hasTagCompound() || ItemStack.areItemStackTagsEqual(recipeItem, candidate);
     }
 }
