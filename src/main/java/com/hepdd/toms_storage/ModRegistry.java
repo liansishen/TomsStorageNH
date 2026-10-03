@@ -6,6 +6,7 @@ import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.oredict.RecipeSorter;
 import net.minecraftforge.oredict.ShapedOreRecipe;
 import net.minecraftforge.oredict.ShapelessOreRecipe;
 
@@ -15,6 +16,7 @@ import com.hepdd.toms_storage.block.BlockInventoryConnector;
 import com.hepdd.toms_storage.block.BlockInventoryHopper;
 import com.hepdd.toms_storage.block.BlockStorageTerminal;
 import com.hepdd.toms_storage.block.BlockTrim;
+import com.hepdd.toms_storage.crafting.WirelessTerminalUpgradeRecipe;
 import com.hepdd.toms_storage.item.ItemBlockWithTooltip;
 import com.hepdd.toms_storage.item.ItemWirelessTerminal;
 import com.hepdd.toms_storage.tile.TileEntityCraftingTerminal;
@@ -116,6 +118,14 @@ public final class ModRegistry {
             storageTerminal,
             'D',
             Items.diamond);
+        RecipeSorter.register(
+            TomsStorageMod.MODID + ":wireless_terminal_upgrade",
+            WirelessTerminalUpgradeRecipe.class,
+            RecipeSorter.Category.SHAPED,
+            "after:forge:shapedore");
+        GameRegistry.addRecipe(new WirelessTerminalUpgradeRecipe(1, "ingotIron"));
+        GameRegistry.addRecipe(new WirelessTerminalUpgradeRecipe(2, "ingotSteel"));
+        GameRegistry.addRecipe(new WirelessTerminalUpgradeRecipe(3, "ingotAluminium"));
     }
 
     public static void postInit() {}

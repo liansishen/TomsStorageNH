@@ -31,7 +31,7 @@ Gregory Tweaks For Crafting (`craftingtweaks`) is optional and adds rotate, bala
 - Inventory Trim extends the connected path between inventories.
 - Storage Terminals provide centralized insertion, extraction, sorting and searching.
 - Crafting Terminals add a crafting grid with NEI recipe transfer and auto-crafting integration.
-- Wireless Terminals can be bound to a terminal and used within the configured range and dimension.
+- Wireless Terminals can be bound to a terminal and used in the same dimension. Their four levels provide 16/32/64/128-block access, with white/green/blue/gold names displaying the level, such as `Wireless Terminal(Lv1)`. Tooltips show the range and binding information. Upgrade the same terminal in a crafting table: redstone in the four corners, iron/steel/aluminium ingots on the four sides, and the previous-level terminal in the center. Upgrades preserve its binding and other item data; NEI shows the recipes.
 
 ### Search
 
