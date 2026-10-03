@@ -4,9 +4,11 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
+import com.gtnewhorizon.gtnhlib.util.ServerThreadUtil;
 import com.hepdd.toms_storage.gui.ContainerCraftingTerminal;
 import com.hepdd.toms_storage.gui.ContainerStorageTerminal;
 import com.hepdd.toms_storage.gui.SlotAction;
+import com.hepdd.toms_storage.nei.RecipeNbtSerializer;
 import com.hepdd.toms_storage.tile.TileEntityStorageTerminal;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
@@ -21,7 +23,11 @@ public class PacketTerminalAction implements IMessage {
     private ItemStack stack;
     private String search;
     private int sorting = -1;
-    private Boolean neiTransfer;
+    private NBTTagCompound recipe;
+    private int windowId;
+    private Boolean autoRefill;
+    private int craftingButton;
+    private int craftingMode = -1;
 
     public PacketTerminalAction() {}
 
@@ -43,9 +49,25 @@ public class PacketTerminalAction implements IMessage {
         return packet;
     }
 
-    public static PacketTerminalAction neiTransfer(boolean begin) {
+    public static PacketTerminalAction fillRecipe(int windowId, NBTTagCompound recipe) {
         PacketTerminalAction packet = new PacketTerminalAction();
-        packet.neiTransfer = begin;
+        packet.windowId = windowId;
+        packet.recipe = (NBTTagCompound) recipe.copy();
+        return packet;
+    }
+
+    public static PacketTerminalAction autoRefill(int windowId, boolean enabled) {
+        PacketTerminalAction packet = new PacketTerminalAction();
+        packet.windowId = windowId;
+        packet.autoRefill = enabled;
+        return packet;
+    }
+
+    public static PacketTerminalAction craftResult(int windowId, int button, int mode) {
+        PacketTerminalAction packet = new PacketTerminalAction();
+        packet.windowId = windowId;
+        packet.craftingButton = button;
+        packet.craftingMode = mode;
         return packet;
     }
 
@@ -56,7 +78,13 @@ public class PacketTerminalAction implements IMessage {
         if (tag.hasKey("stack")) stack = ItemStack.loadItemStackFromNBT(tag.getCompoundTag("stack"));
         if (tag.hasKey("search")) search = tag.getString("search");
         if (tag.hasKey("sorting")) sorting = tag.getInteger("sorting");
-        if (tag.hasKey("neiTransfer")) neiTransfer = tag.getBoolean("neiTransfer");
+        if (tag.hasKey("recipe")) recipe = tag.getCompoundTag("recipe");
+        if (tag.hasKey("autoRefill")) autoRefill = tag.getBoolean("autoRefill");
+        if (tag.hasKey("craftingMode")) {
+            craftingMode = tag.getInteger("craftingMode");
+            craftingButton = tag.getInteger("craftingButton");
+        }
+        windowId = tag.getInteger("windowId");
     }
 
     @Override
@@ -70,7 +98,13 @@ public class PacketTerminalAction implements IMessage {
         }
         if (search != null) tag.setString("search", search);
         if (sorting >= 0) tag.setInteger("sorting", sorting);
-        if (neiTransfer != null) tag.setBoolean("neiTransfer", neiTransfer);
+        if (recipe != null) tag.setTag("recipe", recipe);
+        if (autoRefill != null) tag.setBoolean("autoRefill", autoRefill);
+        if (craftingMode >= 0) {
+            tag.setInteger("craftingMode", craftingMode);
+            tag.setInteger("craftingButton", craftingButton);
+        }
+        if (recipe != null || autoRefill != null || craftingMode >= 0) tag.setInteger("windowId", windowId);
         ByteBufUtils.writeTag(buf, tag);
     }
 
@@ -79,25 +113,62 @@ public class PacketTerminalAction implements IMessage {
         @Override
         public IMessage onMessage(PacketTerminalAction message, MessageContext ctx) {
             EntityPlayerMP player = ctx.getServerHandler().playerEntity;
-            if (!(player.openContainer instanceof ContainerStorageTerminal)) return null;
+            ServerThreadUtil.addScheduledTask(() -> handleAction(message, player));
+            return null;
+        }
+
+        private static void handleAction(PacketTerminalAction message, EntityPlayerMP player) {
+            if (message.craftingMode >= 0) {
+                handleCraftingClick(message, player);
+                return;
+            }
+            if (!(player.openContainer instanceof ContainerStorageTerminal)) return;
 
             ContainerStorageTerminal container = (ContainerStorageTerminal) player.openContainer;
             TileEntityStorageTerminal terminal = container.getTerminal();
             if (message.search != null) terminal.setLastSearch(message.search);
             if (message.sorting >= 0) terminal.setSorting(message.sorting);
-            if (message.neiTransfer != null && container instanceof ContainerCraftingTerminal) {
-                if (message.neiTransfer) {
-                    ((ContainerCraftingTerminal) container).beginNeiTransfer();
-                } else {
-                    ((ContainerCraftingTerminal) container).endNeiTransfer(player);
-                }
+            if (message.autoRefill != null && container instanceof ContainerCraftingTerminal
+                && container.windowId == message.windowId
+                && container.canInteractWith(player)) {
+                ((ContainerCraftingTerminal) container).setAutoRefillEnabled(message.autoRefill);
+                container.detectAndSendChanges();
+            }
+            if (message.recipe != null && container instanceof ContainerCraftingTerminal
+                && container.windowId == message.windowId
+                && container.canInteractWith(player)) {
+                ((ContainerCraftingTerminal) container).fillRecipe(
+                    player,
+                    RecipeNbtSerializer.readIngredients(message.recipe),
+                    message.recipe.getInteger("count"));
+                player.inventory.markDirty();
+                container.detectAndSendChanges();
+                player.sendContainerToPlayer(container);
             }
             if (message.action == SlotAction.CLEAR_GRID && container instanceof ContainerCraftingTerminal) {
                 ((ContainerCraftingTerminal) container).clearGrid();
-                return null;
+                return;
             }
             if (message.action != null) container.handleTerminalAction(player, message.action, message.stack);
-            return null;
+        }
+
+        private static void handleCraftingClick(PacketTerminalAction message, EntityPlayerMP player) {
+            if (!(player.openContainer instanceof ContainerCraftingTerminal)) return;
+            ContainerCraftingTerminal container = (ContainerCraftingTerminal) player.openContainer;
+            if (container.windowId != message.windowId) return;
+            int mode = message.craftingMode;
+            int button = message.craftingButton;
+            boolean valid = ((mode == 0 || mode == 1 || mode == 4) && (button == 0 || button == 1))
+                || (mode == 2 && button >= 0 && button < 9)
+                || (mode == 3 && button == 2 && player.capabilities.isCreativeMode);
+            if (valid && container.canInteractWith(player) && container.isPlayerNotUsingContainer(player)) {
+                container.slotClick(ContainerCraftingTerminal.GRID_SLOT_START - 1, button, mode, player);
+            }
+            player.inventory.markDirty();
+            container.detectAndSendChanges();
+            player.sendContainerToPlayer(container);
+            // Release client prediction only after inventory and cursor updates have been sent.
+            player.sendProgressBarUpdate(container, 1, 0);
         }
     }
 }

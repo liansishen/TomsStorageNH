@@ -19,6 +19,7 @@ public final class AutoCraftPreviewInventory {
     private List<ItemStack> playerStacks = new ArrayList<>();
     private List<NBTTagCompound> patterns = new ArrayList<>();
     private int activeRequestId = -1;
+    private int revision;
 
     public List<StoredItemStack> getStacks(List<StoredItemStack> baseStacks) {
         return activeRequestId >= 0 ? copyStacks(stacks) : copyStacks(baseStacks);
@@ -26,6 +27,10 @@ public final class AutoCraftPreviewInventory {
 
     public boolean isActive() {
         return activeRequestId >= 0;
+    }
+
+    public int getRevision() {
+        return revision;
     }
 
     public List<ItemStack> getPlayerStacks(InventoryPlayer inventory) {
@@ -37,6 +42,7 @@ public final class AutoCraftPreviewInventory {
         playerStacks = new ArrayList<>();
         patterns = new ArrayList<>();
         activeRequestId = -1;
+        revision++;
     }
 
     public boolean applyRequest(int requestId, List<StoredItemStack> baseStacks, InventoryPlayer playerInventory,
@@ -70,6 +76,7 @@ public final class AutoCraftPreviewInventory {
         stacks = preview;
         playerStacks = previewPlayer;
         activeRequestId = requestId;
+        revision++;
         return true;
     }
 

@@ -15,7 +15,7 @@ import cpw.mods.fml.common.event.FMLServerStartingEvent;
     version = Tags.VERSION,
     name = TomsStorageMod.NAME,
     acceptedMinecraftVersions = "[1.7.10]",
-    dependencies = "required-after:NotEnoughItems;required-after:unimixins")
+    dependencies = "required-after:gtnhlib;required-after:NotEnoughItems;required-after:unimixins")
 public class TomsStorageMod {
 
     public static final String MODID = "tomsstorage";
