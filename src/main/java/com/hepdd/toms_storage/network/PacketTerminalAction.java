@@ -9,7 +9,6 @@ import com.hepdd.toms_storage.gui.ContainerCraftingTerminal;
 import com.hepdd.toms_storage.gui.ContainerStorageTerminal;
 import com.hepdd.toms_storage.gui.SlotAction;
 import com.hepdd.toms_storage.nei.RecipeNbtSerializer;
-import com.hepdd.toms_storage.tile.TileEntityStorageTerminal;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
@@ -21,8 +20,6 @@ public class PacketTerminalAction implements IMessage {
 
     private SlotAction action;
     private ItemStack stack;
-    private String search;
-    private int sorting = -1;
     private NBTTagCompound recipe;
     private int windowId;
     private Boolean autoRefill;
@@ -35,18 +32,6 @@ public class PacketTerminalAction implements IMessage {
         this.action = action;
         this.stack = stack == null ? null : stack.copy();
         if (this.stack != null) this.stack.stackSize = 1;
-    }
-
-    public static PacketTerminalAction search(String search) {
-        PacketTerminalAction packet = new PacketTerminalAction();
-        packet.search = search == null ? "" : search;
-        return packet;
-    }
-
-    public static PacketTerminalAction sorting(int sorting) {
-        PacketTerminalAction packet = new PacketTerminalAction();
-        packet.sorting = sorting;
-        return packet;
     }
 
     public static PacketTerminalAction fillRecipe(int windowId, NBTTagCompound recipe) {
@@ -74,10 +59,14 @@ public class PacketTerminalAction implements IMessage {
     @Override
     public void fromBytes(ByteBuf buf) {
         NBTTagCompound tag = ByteBufUtils.readTag(buf);
-        if (tag.hasKey("action")) action = SlotAction.VALUES[tag.getInteger("action") % SlotAction.VALUES.length];
+        if (tag == null) return;
+        if (tag.hasKey("action")) {
+            int ordinal = tag.getInteger("action");
+            if (ordinal >= 0 && ordinal < SlotAction.VALUES.length) {
+                action = SlotAction.VALUES[ordinal];
+            }
+        }
         if (tag.hasKey("stack")) stack = ItemStack.loadItemStackFromNBT(tag.getCompoundTag("stack"));
-        if (tag.hasKey("search")) search = tag.getString("search");
-        if (tag.hasKey("sorting")) sorting = tag.getInteger("sorting");
         if (tag.hasKey("recipe")) recipe = tag.getCompoundTag("recipe");
         if (tag.hasKey("autoRefill")) autoRefill = tag.getBoolean("autoRefill");
         if (tag.hasKey("craftingMode")) {
@@ -96,8 +85,6 @@ public class PacketTerminalAction implements IMessage {
             stack.writeToNBT(stackTag);
             tag.setTag("stack", stackTag);
         }
-        if (search != null) tag.setString("search", search);
-        if (sorting >= 0) tag.setInteger("sorting", sorting);
         if (recipe != null) tag.setTag("recipe", recipe);
         if (autoRefill != null) tag.setBoolean("autoRefill", autoRefill);
         if (craftingMode >= 0) {
@@ -117,7 +104,8 @@ public class PacketTerminalAction implements IMessage {
             return null;
         }
 
-        private static void handleAction(PacketTerminalAction message, EntityPlayerMP player) {
+        public static void handleAction(PacketTerminalAction message, EntityPlayerMP player) {
+            if (player == null || player.playerNetServerHandler == null) return;
             if (message.craftingMode >= 0) {
                 handleCraftingClick(message, player);
                 return;
@@ -125,31 +113,31 @@ public class PacketTerminalAction implements IMessage {
             if (!(player.openContainer instanceof ContainerStorageTerminal)) return;
 
             ContainerStorageTerminal container = (ContainerStorageTerminal) player.openContainer;
-            TileEntityStorageTerminal terminal = container.getTerminal();
-            if (message.search != null) terminal.setLastSearch(message.search);
-            if (message.sorting >= 0) terminal.setSorting(message.sorting);
+            if (!container.canInteractWith(player)) return;
+
             if (message.autoRefill != null && container instanceof ContainerCraftingTerminal
-                && container.windowId == message.windowId
-                && container.canInteractWith(player)) {
+                && container.windowId == message.windowId) {
                 ((ContainerCraftingTerminal) container).setAutoRefillEnabled(message.autoRefill);
                 container.detectAndSendChanges();
             }
             if (message.recipe != null && container instanceof ContainerCraftingTerminal
-                && container.windowId == message.windowId
-                && container.canInteractWith(player)) {
+                && container.windowId == message.windowId) {
                 ((ContainerCraftingTerminal) container).fillRecipe(
                     player,
                     RecipeNbtSerializer.readIngredients(message.recipe),
                     message.recipe.getInteger("count"));
                 player.inventory.markDirty();
                 container.detectAndSendChanges();
-                player.sendContainerToPlayer(container);
             }
             if (message.action == SlotAction.CLEAR_GRID && container instanceof ContainerCraftingTerminal) {
                 ((ContainerCraftingTerminal) container).clearGrid();
+                player.inventory.markDirty();
+                container.detectAndSendChanges();
                 return;
             }
-            if (message.action != null) container.handleTerminalAction(player, message.action, message.stack);
+            if (message.action != null) {
+                container.handleTerminalAction(player, message.action, message.stack);
+            }
         }
 
         private static void handleCraftingClick(PacketTerminalAction message, EntityPlayerMP player) {
@@ -166,7 +154,7 @@ public class PacketTerminalAction implements IMessage {
             }
             player.inventory.markDirty();
             container.detectAndSendChanges();
-            player.sendContainerToPlayer(container);
+            player.updateHeldItem();
             // Release client prediction only after inventory and cursor updates have been sent.
             player.sendProgressBarUpdate(container, 1, 0);
         }

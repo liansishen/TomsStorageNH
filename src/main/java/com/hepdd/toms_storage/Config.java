@@ -21,6 +21,7 @@ public class Config {
     public static int terminalSearchMode = SEARCH_PRESET_AUTO_KEEP;
     public static String terminalLastSearch = "";
     public static boolean terminalSearchMigrated = false;
+    public static int terminalSorting = 0;
 
     private static Configuration configuration;
 
@@ -72,6 +73,16 @@ public class Config {
             "client",
             terminalSearchMigrated,
             "Whether the old per-terminal search value has been migrated to the local setting.");
+        terminalSorting = configuration.getInt(
+            "terminalSorting",
+            "client",
+            terminalSorting,
+            0,
+            3,
+            "Terminal sorting bit mask: bit 0 sort type (0 amount, 1 name), bit 1 reversed.");
+        terminalSorting = normalizeSorting(terminalSorting);
+        configuration.get("client", "terminalSorting", terminalSorting)
+            .set(terminalSorting);
 
         if (configuration.hasChanged()) {
             configuration.save();
@@ -94,6 +105,18 @@ public class Config {
         configuration.get("client", "terminalSearchMigrated", terminalSearchMigrated)
             .set(terminalSearchMigrated);
         if (configuration.hasChanged()) configuration.save();
+    }
+
+    public static void saveTerminalSorting(int sorting) {
+        terminalSorting = normalizeSorting(sorting);
+        if (configuration == null) return;
+        configuration.get("client", "terminalSorting", terminalSorting)
+            .set(terminalSorting);
+        if (configuration.hasChanged()) configuration.save();
+    }
+
+    public static int normalizeSorting(int sorting) {
+        return sorting & 3;
     }
 
     public static int normalizeSearchMode(int mode) {

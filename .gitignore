@@ -37,4 +37,5 @@ addon.late.local.gradle.kts
 layout.json
 /docs/*
 !/docs/releasing.md
+!/docs/storage-compatibility.md
 /libs/

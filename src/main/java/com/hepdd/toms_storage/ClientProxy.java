@@ -5,10 +5,12 @@ import net.minecraft.inventory.Container;
 import net.minecraftforge.common.MinecraftForge;
 
 import com.hepdd.toms_storage.client.ConnectorRangePreview;
+import com.hepdd.toms_storage.client.GuiStorageTerminal;
 import com.hepdd.toms_storage.client.RenderInventoryCableBlock;
 import com.hepdd.toms_storage.client.RenderInventoryHopperBlock;
 import com.hepdd.toms_storage.client.RenderTerminalBlock;
 import com.hepdd.toms_storage.gui.ContainerStorageTerminal;
+import com.hepdd.toms_storage.nei.AutoCraftPreviewInventory;
 import com.hepdd.toms_storage.nei.NEIDebug;
 import com.hepdd.toms_storage.network.PacketAutoCraftResult;
 import com.hepdd.toms_storage.network.PacketConnectorRangePreview;
@@ -48,25 +50,32 @@ public class ClientProxy extends CommonProxy {
     }
 
     private void applyTerminalData(PacketTerminalData message) {
-        if (Minecraft.getMinecraft().thePlayer == null) return;
-        Container container = Minecraft.getMinecraft().thePlayer.openContainer;
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.thePlayer == null) return;
+        Container container = mc.thePlayer.openContainer;
         if (!(container instanceof ContainerStorageTerminal)) return;
         ContainerStorageTerminal terminal = (ContainerStorageTerminal) container;
-        terminal.setClientStacks(message.getStacks());
-        terminal.getAutoCraftPreview()
-            .clear();
-        terminal.sorting = message.getSorting();
-        terminal.search = message.getSearch();
+        if (terminal.applyTerminalDataPacket(message) && mc.currentScreen instanceof GuiStorageTerminal) {
+            ((GuiStorageTerminal) mc.currentScreen).refreshFromTerminalData();
+        }
     }
 
     private void applyAutoCraftResult(PacketAutoCraftResult message) {
-        if (Minecraft.getMinecraft().thePlayer == null) return;
-        Container container = Minecraft.getMinecraft().thePlayer.openContainer;
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.thePlayer == null) return;
+        Container container = mc.thePlayer.openContainer;
         if (container instanceof ContainerStorageTerminal) {
-            if (!message.isSuccess()) NEIDebug
-                .log("autocraft result failed request=" + message.getRequestId() + " reason=" + message.getReason());
-            ((ContainerStorageTerminal) container).getAutoCraftPreview()
-                .clearIfMatches(message.getRequestId());
+            AutoCraftPreviewInventory preview = ((ContainerStorageTerminal) container).getAutoCraftPreview();
+            if (message.isSuccess()) {
+                preview.clearIfMatches(message.getRequestId());
+            } else {
+                NEIDebug.log(
+                    "autocraft result failed request=" + message.getRequestId() + " reason=" + message.getReason());
+                preview.clearOnFailure(message.getRequestId());
+            }
+            if (mc.currentScreen instanceof GuiStorageTerminal) {
+                ((GuiStorageTerminal) mc.currentScreen).refreshFromTerminalData();
+            }
         }
     }
 

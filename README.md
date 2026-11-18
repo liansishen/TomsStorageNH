@@ -27,8 +27,9 @@ Gregory Tweaks For Crafting (`craftingtweaks`) is optional and adds rotate, bala
 
 ### Storage Network
 
-- Inventory Connectors combine touching inventories into one storage network.
+- Inventory Connectors combine touching storage containers into one storage network, with machine inventories excluded.
 - Inventory Trim extends the connected path between inventories.
+- Chests, barrels, drawers and other supported containers retain their storage and access rules. See the [container compatibility list](docs/storage-compatibility.md).
 - Storage Terminals provide centralized insertion, extraction, sorting and searching.
 - Crafting Terminals add a crafting grid with NEI recipe transfer and auto-crafting integration.
 - Wireless Terminals can be bound to a terminal and used in the same dimension. Their four levels provide 16/32/64/128-block access, with white/green/blue/gold names displaying the level, such as `Wireless Terminal(Lv1)`. Tooltips show the range and binding information. Upgrade the same terminal in a crafting table: redstone in the four corners, iron/steel/aluminium ingots on the four sides, and the previous-level terminal in the center. Upgrades preserve its binding and other item data; NEI shows the recipes.

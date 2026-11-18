@@ -7,6 +7,7 @@ import java.util.List;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.item.ItemStack;
 
+import com.hepdd.toms_storage.Config;
 import com.hepdd.toms_storage.crafting.CraftingInventorySnapshot;
 import com.hepdd.toms_storage.crafting.CraftingInventorySnapshot.Extraction;
 import com.hepdd.toms_storage.gui.ContainerCraftingTerminal;
@@ -53,10 +54,12 @@ public class TerminalOverlayHandler extends DefaultOverlayHandler {
         int recipeIndex) {
         ContainerCraftingTerminal container = (ContainerCraftingTerminal) firstGui.inventorySlots;
         AutoCraftPreviewInventory preview = container.getAutoCraftPreview();
+        boolean previewActive = preview.isActive();
         CraftingInventorySnapshot snapshot = new CraftingInventorySnapshot(
-            container.getPreviewStacks(),
-            preview.getPlayerStacks(firstGui.mc.thePlayer.inventory));
-        if (!preview.isActive()) {
+            preview.getStacksView(container.clientStacks),
+            preview.getPlayerStacksView(firstGui.mc.thePlayer.inventory),
+            true);
+        if (!previewActive) {
             // Filling returns the current grid to storage before reserving ingredients.
             for (int i = 0; i < container.craftMatrix.getSizeInventory(); i++) {
                 snapshot.addTerminal(container.craftMatrix.getStackInSlot(i));
@@ -66,9 +69,9 @@ public class TerminalOverlayHandler extends DefaultOverlayHandler {
         ingredients.sort(
             Comparator.comparingInt((PositionedStack stack) -> stack.rely)
                 .thenComparingInt(stack -> stack.relx));
-        List<ItemOverlayState> presence = new ArrayList<>();
+        List<ItemOverlayState> presence = new ArrayList<>(ingredients.size());
         for (PositionedStack ingredient : ingredients) {
-            Extraction extraction = preview.isActive() ? snapshot.reserve(ingredient.items)
+            Extraction extraction = previewActive ? snapshot.reserve(ingredient.items)
                 : snapshot.reserveLargest(ingredient.items);
             boolean present = extraction != null;
             if (present) {
@@ -77,9 +80,10 @@ public class TerminalOverlayHandler extends DefaultOverlayHandler {
                     <= Math.min(container.craftMatrix.getInventoryStackLimit(), stack.getMaxStackSize());
             }
             presence.add(new ItemOverlayState(ingredient, present));
-            NEIDebug.log("presenceOverlay ingredient=" + NEIDebug.stack(ingredient.item) + " present=" + present);
+            if (Config.debugNeiAutocrafting) {
+                NEIDebug.log("presenceOverlay ingredient=" + NEIDebug.stack(ingredient.item) + " present=" + present);
+            }
         }
         return presence;
     }
-
 }

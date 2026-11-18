@@ -46,7 +46,8 @@ public class ContainerCraftingTerminal extends ContainerStorageTerminal {
 
     public ContainerCraftingTerminal(InventoryPlayer playerInventory, TileEntityCraftingTerminal terminal) {
         super(playerInventory, terminal);
-        world = terminal.getWorldObj();
+        world = terminal != null && terminal.getWorldObj() != null ? terminal.getWorldObj()
+            : playerInventory.player.worldObj;
         refillPlayerSlots = new boolean[playerInventory.mainInventory.length];
 
         resultSlot = addSlotToContainer(
@@ -86,12 +87,15 @@ public class ContainerCraftingTerminal extends ContainerStorageTerminal {
     }
 
     public boolean isAutoRefillEnabled() {
-        return world.isRemote ? autoRefill : ((TileEntityCraftingTerminal) terminal).isAutoRefillEnabled();
+        return (world != null && world.isRemote) || !(terminal instanceof TileEntityCraftingTerminal) ? autoRefill
+            : ((TileEntityCraftingTerminal) terminal).isAutoRefillEnabled();
     }
 
     public void setAutoRefillEnabled(boolean enabled) {
         autoRefill = enabled;
-        if (!world.isRemote) ((TileEntityCraftingTerminal) terminal).setAutoRefillEnabled(enabled);
+        if ((world == null || !world.isRemote) && terminal instanceof TileEntityCraftingTerminal) {
+            ((TileEntityCraftingTerminal) terminal).setAutoRefillEnabled(enabled);
+        }
     }
 
     public void beginCraftingClick() {
@@ -105,7 +109,9 @@ public class ContainerCraftingTerminal extends ContainerStorageTerminal {
     @Override
     public void addCraftingToCrafters(ICrafting crafter) {
         super.addCraftingToCrafters(crafter);
-        crafter.sendProgressBarUpdate(this, 0, isAutoRefillEnabled() ? 1 : 0);
+        int state = isAutoRefillEnabled() ? 1 : 0;
+        crafter.sendProgressBarUpdate(this, 0, state);
+        lastAutoRefill = state;
     }
 
     @Override
@@ -133,6 +139,17 @@ public class ContainerCraftingTerminal extends ContainerStorageTerminal {
     @Override
     public void onCraftMatrixChanged(net.minecraft.inventory.IInventory inventory) {
         if (batchingGridChanges) return;
+        boolean hasAny = false;
+        for (int i = 0, size = craftMatrix.getSizeInventory(); i < size; i++) {
+            if (craftMatrix.getStackInSlot(i) != null) {
+                hasAny = true;
+                break;
+            }
+        }
+        if (!hasAny) {
+            craftResult.setInventorySlotContents(0, null);
+            return;
+        }
         craftResult.setInventorySlotContents(
             0,
             CraftingManager.getInstance()
@@ -146,7 +163,7 @@ public class ContainerCraftingTerminal extends ContainerStorageTerminal {
     }
 
     public void clearGrid() {
-        if (!world.isRemote) {
+        if ((world == null || !world.isRemote) && terminal != null) {
             for (int i = 0; i < craftMatrix.getSizeInventory(); i++) {
                 ItemStack stack = craftMatrix.getStackInSlotOnClosing(i);
                 if (stack != null) terminal.pushOrDrop(stack);

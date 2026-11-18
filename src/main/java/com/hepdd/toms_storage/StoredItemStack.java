@@ -2,8 +2,8 @@ package com.hepdd.toms_storage;
 
 import java.util.Comparator;
 import java.util.function.Function;
+import java.util.function.LongFunction;
 
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
@@ -11,20 +11,42 @@ public class StoredItemStack {
 
     private static final String ITEM_COUNT_NAME = "c";
     private static final String ITEMSTACK_NAME = "s";
+    private static volatile int languageGeneration;
 
     private final ItemStack stack;
     private long count;
+
+    private transient int cachedHash;
+    private transient boolean hashComputed;
+    private transient String cachedDisplayName;
+    private transient int cachedLanguageGeneration = -1;
+    private transient long cachedCountValue = Long.MIN_VALUE;
+    private transient String cachedCountText;
 
     public StoredItemStack(ItemStack stack) {
         this(stack, stack == null ? 0 : stack.stackSize);
     }
 
     public StoredItemStack(ItemStack stack, long count) {
-        this.stack = stack == null ? null : stack.copy();
-        if (this.stack != null) {
+        this(stack, count, true);
+    }
+
+    private StoredItemStack(ItemStack stack, long count, boolean copy) {
+        if (stack == null) {
+            this.stack = null;
+        } else {
+            this.stack = copy ? stack.copy() : stack;
             this.stack.stackSize = 1;
         }
         this.count = count;
+    }
+
+    public static StoredItemStack wrapOwned(ItemStack stack, long count) {
+        return new StoredItemStack(stack, count, false);
+    }
+
+    public static void invalidateLanguageCache() {
+        languageGeneration++;
     }
 
     public ItemStack getStack() {
@@ -33,6 +55,10 @@ public class StoredItemStack {
 
     public long getQuantity() {
         return count;
+    }
+
+    public void setQuantity(long count) {
+        this.count = count;
     }
 
     public ItemStack getActualStack() {
@@ -60,22 +86,55 @@ public class StoredItemStack {
         stackTag.setByte("Count", (byte) 1);
         ItemStack stack = ItemStack.loadItemStackFromNBT(stackTag);
         if (stack == null) return null;
-        return new StoredItemStack(stack, tag.getLong(ITEM_COUNT_NAME));
+        return wrapOwned(stack, tag.getLong(ITEM_COUNT_NAME));
     }
 
     public String getDisplayName() {
-        return stack == null ? "" : stack.getDisplayName();
+        if (stack == null) return "";
+        int gen = languageGeneration;
+        String name = cachedDisplayName;
+        if (name != null && cachedLanguageGeneration == gen) {
+            return name;
+        }
+        try {
+            name = stack.getDisplayName();
+            if (name == null) name = "";
+        } catch (RuntimeException ignored) {
+            name = "";
+        }
+        cachedDisplayName = name;
+        cachedLanguageGeneration = gen;
+        return name;
+    }
+
+    public String getFormattedCount(LongFunction<String> formatter) {
+        long current = this.count;
+        String text = this.cachedCountText;
+        if (text != null && this.cachedCountValue == current) {
+            return text;
+        }
+        text = formatter.apply(current);
+        this.cachedCountValue = current;
+        this.cachedCountText = text;
+        return text;
     }
 
     @Override
     public int hashCode() {
-        int result = 1;
-        result = 31 * result + (stack == null ? 0 : Item.getIdFromItem(stack.getItem()));
-        result = 31 * result + (stack == null ? 0 : stack.getItemDamage());
-        result = 31 * result + (stack == null || !stack.hasTagCompound() ? 0
-            : stack.getTagCompound()
-                .hashCode());
-        return result;
+        if (!hashComputed) {
+            if (stack == null) {
+                cachedHash = 1;
+            } else {
+                int result = 1;
+                result = 31 * result + System.identityHashCode(stack.getItem());
+                result = 31 * result + stack.getItemDamage();
+                result = 31 * result + (stack.hasTagCompound() ? stack.getTagCompound()
+                    .hashCode() : 0);
+                cachedHash = result;
+            }
+            hashComputed = true;
+        }
+        return cachedHash;
     }
 
     @Override
