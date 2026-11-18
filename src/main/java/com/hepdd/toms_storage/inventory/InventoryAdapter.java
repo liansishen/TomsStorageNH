@@ -1,5 +1,7 @@
 package com.hepdd.toms_storage.inventory;
 
+import java.util.BitSet;
+
 import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.ISidedInventory;
 import net.minecraft.item.ItemStack;
@@ -9,8 +11,10 @@ import com.hepdd.toms_storage.StorageItemUtils;
 
 public class InventoryAdapter implements IStorageInventory {
 
-    private final IInventory inventory;
-    private final ForgeDirection side;
+    protected final IInventory inventory;
+    protected final ForgeDirection side;
+    private int[] cachedAccessibleRef;
+    private BitSet cachedAccessibleBits;
 
     public InventoryAdapter(IInventory inventory, ForgeDirection side) {
         this.inventory = inventory;
@@ -19,6 +23,18 @@ public class InventoryAdapter implements IStorageInventory {
 
     public IInventory getInventory() {
         return inventory;
+    }
+
+    public IInventory getOwnerInventory() {
+        return inventory;
+    }
+
+    public Object getStorageIdentity() {
+        return inventory;
+    }
+
+    public boolean containsInventory(IInventory target) {
+        return inventory == target;
     }
 
     @Override
@@ -37,7 +53,7 @@ public class InventoryAdapter implements IStorageInventory {
         if (stack == null || stack.stackSize < 1 || !canInsert(slot, stack)) return stack;
 
         ItemStack existing = inventory.getStackInSlot(slot);
-        int limit = Math.min(inventory.getInventoryStackLimit(), stack.getMaxStackSize());
+        int limit = getSlotLimit(stack);
         if (existing != null) {
             if (!StorageItemUtils.areItemStacksEqual(existing, stack, true)) return stack;
             limit -= existing.stackSize;
@@ -63,15 +79,16 @@ public class InventoryAdapter implements IStorageInventory {
 
     @Override
     public ItemStack extractItem(int slot, int amount, boolean simulate) {
-        if (amount < 1 || !canExtract(slot)) return null;
+        if (amount < 1 || !isSlotInRange(slot)) return null;
         ItemStack existing = inventory.getStackInSlot(slot);
-        if (existing == null) return null;
+        if (existing == null || !canExtract(slot, existing)) return null;
 
         int extracted = Math.min(amount, existing.stackSize);
         ItemStack result = StorageItemUtils.copyWithSize(existing, extracted);
         if (!simulate) {
-            inventory.decrStackSize(slot, extracted);
+            ItemStack extractedStack = inventory.decrStackSize(slot, extracted);
             inventory.markDirty();
+            return extractedStack;
         }
         return result;
     }
@@ -81,7 +98,7 @@ public class InventoryAdapter implements IStorageInventory {
         return canInsert(slot, stack);
     }
 
-    private boolean canInsert(int slot, ItemStack stack) {
+    protected boolean canInsert(int slot, ItemStack stack) {
         if (!isSlotInRange(slot)) return false;
         if (!inventory.isItemValidForSlot(slot, stack)) return false;
         if (inventory instanceof ISidedInventory) {
@@ -91,14 +108,17 @@ public class InventoryAdapter implements IStorageInventory {
         return true;
     }
 
-    private boolean canExtract(int slot) {
+    protected boolean canExtract(int slot, ItemStack stack) {
         if (!isSlotInRange(slot)) return false;
         if (inventory instanceof ISidedInventory) {
             ISidedInventory sided = (ISidedInventory) inventory;
-            ItemStack stack = inventory.getStackInSlot(slot);
-            return stack != null && isSlotAccessible(sided, slot) && sided.canExtractItem(slot, stack, side.ordinal());
+            return isSlotAccessible(sided, slot) && sided.canExtractItem(slot, stack, side.ordinal());
         }
         return true;
+    }
+
+    protected int getSlotLimit(ItemStack stack) {
+        return Math.min(inventory.getInventoryStackLimit(), stack.getMaxStackSize());
     }
 
     private boolean isSlotInRange(int slot) {
@@ -106,11 +126,26 @@ public class InventoryAdapter implements IStorageInventory {
     }
 
     private boolean isSlotAccessible(ISidedInventory sided, int slot) {
+        if (slot < 0) return false;
         int[] accessible = sided.getAccessibleSlotsFromSide(side.ordinal());
-        if (accessible == null) return false;
-        for (int candidate : accessible) {
-            if (candidate == slot) return true;
+        if (accessible == null || accessible.length == 0) return false;
+        if (accessible.length <= 8) {
+            for (int candidate : accessible) {
+                if (candidate == slot) return true;
+            }
+            return false;
         }
-        return false;
+        BitSet bits = cachedAccessibleBits;
+        if (accessible != cachedAccessibleRef || bits == null) {
+            bits = new BitSet(accessible.length);
+            for (int candidate : accessible) {
+                if (candidate >= 0) {
+                    bits.set(candidate);
+                }
+            }
+            cachedAccessibleRef = accessible;
+            cachedAccessibleBits = bits;
+        }
+        return bits.get(slot);
     }
 }

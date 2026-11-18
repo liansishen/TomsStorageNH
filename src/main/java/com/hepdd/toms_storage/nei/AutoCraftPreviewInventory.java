@@ -1,6 +1,8 @@
 package com.hepdd.toms_storage.nei;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import net.minecraft.entity.player.InventoryPlayer;
@@ -15,43 +17,88 @@ import com.hepdd.toms_storage.gui.ContainerStorageTerminal;
 
 public final class AutoCraftPreviewInventory {
 
+    static final long PREVIEW_TIMEOUT_MS = 10_000L;
+
     private List<StoredItemStack> stacks = new ArrayList<>();
     private List<ItemStack> playerStacks = new ArrayList<>();
     private List<NBTTagCompound> patterns = new ArrayList<>();
     private int activeRequestId = -1;
+    private long lastActiveTimeMs;
     private int revision;
 
-    public List<StoredItemStack> getStacks(List<StoredItemStack> baseStacks) {
+    public synchronized List<StoredItemStack> getStacks(List<StoredItemStack> baseStacks) {
+        checkTimeout(System.currentTimeMillis());
         return activeRequestId >= 0 ? copyStacks(stacks) : copyStacks(baseStacks);
     }
 
-    public boolean isActive() {
+    public synchronized List<StoredItemStack> getStacksView(List<StoredItemStack> baseStacks) {
+        checkTimeout(System.currentTimeMillis());
+        if (activeRequestId >= 0) {
+            return Collections.unmodifiableList(new ArrayList<>(stacks));
+        }
+        return baseStacks == null ? Collections.emptyList() : Collections.unmodifiableList(baseStacks);
+    }
+
+    public synchronized boolean isActive() {
+        checkTimeout(System.currentTimeMillis());
         return activeRequestId >= 0;
     }
 
-    public int getRevision() {
+    public synchronized int getActiveRequestId() {
+        checkTimeout(System.currentTimeMillis());
+        return activeRequestId;
+    }
+
+    public synchronized int getRevision() {
+        checkTimeout(System.currentTimeMillis());
         return revision;
     }
 
-    public List<ItemStack> getPlayerStacks(InventoryPlayer inventory) {
+    public synchronized List<ItemStack> getPlayerStacks(InventoryPlayer inventory) {
+        checkTimeout(System.currentTimeMillis());
         return activeRequestId >= 0 ? copyItems(playerStacks) : copyPlayerStacks(inventory);
     }
 
-    public void clear() {
+    public synchronized List<ItemStack> getPlayerStacksView(InventoryPlayer inventory) {
+        checkTimeout(System.currentTimeMillis());
+        if (activeRequestId >= 0) {
+            return Collections.unmodifiableList(new ArrayList<>(playerStacks));
+        }
+        return inventory == null ? Collections.emptyList() : Arrays.asList(inventory.mainInventory);
+    }
+
+    public synchronized void clear() {
         stacks = new ArrayList<>();
         playerStacks = new ArrayList<>();
         patterns = new ArrayList<>();
         activeRequestId = -1;
+        lastActiveTimeMs = 0L;
         revision++;
     }
 
-    public boolean applyRequest(int requestId, List<StoredItemStack> baseStacks, InventoryPlayer playerInventory,
-        ItemStack[][] ingredients, ItemStack output, int count) {
+    public synchronized boolean applyRequest(int requestId, List<StoredItemStack> baseStacks,
+        InventoryPlayer playerInventory, ItemStack[][] ingredients, ItemStack output, int count) {
+        return applyRequestAt(
+            requestId,
+            baseStacks,
+            playerInventory,
+            ingredients,
+            output,
+            count,
+            System.currentTimeMillis());
+    }
+
+    synchronized boolean applyRequestAt(int requestId, List<StoredItemStack> baseStacks,
+        InventoryPlayer playerInventory, ItemStack[][] ingredients, ItemStack output, int count, long nowMs) {
+        checkTimeout(nowMs);
         List<StoredItemStack> preview = activeRequestId >= 0 ? copyStacks(stacks) : copyStacks(baseStacks);
         List<ItemStack> previewPlayer = activeRequestId >= 0 ? copyItems(playerStacks)
             : copyPlayerStacks(playerInventory);
+        int gridLen = ingredients == null ? 0 : ingredients.length;
+        ItemStack[] consumedInRound = new ItemStack[gridLen];
         for (int i = 0; i < Math.max(1, count); i++) {
-            for (int slot = 0; slot < ingredients.length; slot++) {
+            Arrays.fill(consumedInRound, null);
+            for (int slot = 0; slot < gridLen; slot++) {
                 ItemStack[] candidates = ingredients[slot];
                 if (candidates == null || candidates.length == 0) continue;
                 ItemStack consumed = consumeCandidate(preview, previewPlayer, candidates);
@@ -68,6 +115,9 @@ public final class AutoCraftPreviewInventory {
                             + describeItems(previewPlayer));
                     return false;
                 }
+                consumedInRound[slot] = consumed;
+            }
+            for (ItemStack consumed : consumedInRound) {
                 ItemStack remainder = CraftingRemainderHandler.getRemainder(consumed);
                 if (remainder != null) addStack(preview, remainder);
             }
@@ -76,27 +126,46 @@ public final class AutoCraftPreviewInventory {
         stacks = preview;
         playerStacks = previewPlayer;
         activeRequestId = requestId;
+        lastActiveTimeMs = nowMs;
         revision++;
         return true;
     }
 
-    public void rememberPattern(NBTTagCompound patternTag) {
+    public synchronized void rememberPattern(NBTTagCompound patternTag) {
         if (patternTag == null) return;
         NBTTagCompound copy = (NBTTagCompound) patternTag.copy();
         copy.removeTag("patterns");
-        if (!patterns.contains(copy)) patterns.add(copy);
+        patterns.remove(copy);
+        patterns.add(copy);
     }
 
-    public List<NBTTagCompound> getPatterns() {
-        List<NBTTagCompound> copy = new ArrayList<>();
+    public synchronized List<NBTTagCompound> getPatterns() {
+        checkTimeout(System.currentTimeMillis());
+        List<NBTTagCompound> copy = new ArrayList<>(patterns.size());
         for (NBTTagCompound pattern : patterns) {
             copy.add((NBTTagCompound) pattern.copy());
         }
         return copy;
     }
 
-    public void clearIfMatches(int requestId) {
+    public synchronized void clearIfMatches(int requestId) {
         if (activeRequestId == requestId) clear();
+    }
+
+    public synchronized void clearOnFailure(int requestId) {
+        if (activeRequestId >= 0 && requestId >= 0 && requestId <= activeRequestId) {
+            clear();
+        }
+    }
+
+    public synchronized void expireIfStale(long nowMs) {
+        checkTimeout(nowMs);
+    }
+
+    private void checkTimeout(long nowMs) {
+        if (activeRequestId >= 0 && nowMs - lastActiveTimeMs > PREVIEW_TIMEOUT_MS) {
+            clear();
+        }
     }
 
     public static List<StoredItemStack> getStacks(ContainerStorageTerminal container) {
@@ -149,8 +218,11 @@ public final class AutoCraftPreviewInventory {
 
     private static List<StoredItemStack> copyStacks(List<StoredItemStack> source) {
         List<StoredItemStack> copy = new ArrayList<>();
+        if (source == null) return copy;
         for (StoredItemStack stack : source) {
-            copy.add(new StoredItemStack(stack.getStack(), stack.getQuantity()));
+            if (stack != null) {
+                copy.add(new StoredItemStack(stack.getStack(), stack.getQuantity()));
+            }
         }
         return copy;
     }
@@ -166,6 +238,7 @@ public final class AutoCraftPreviewInventory {
 
     private static List<ItemStack> copyItems(List<ItemStack> source) {
         List<ItemStack> copy = new ArrayList<>();
+        if (source == null) return copy;
         for (ItemStack stack : source) {
             if (stack != null && stack.stackSize > 0) copy.add(stack.copy());
         }
@@ -189,5 +262,4 @@ public final class AutoCraftPreviewInventory {
         for (ItemStack stack : stacks) values.add(NEIDebug.stack(stack));
         return values.toString();
     }
-
 }

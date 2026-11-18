@@ -1,15 +1,11 @@
 package com.hepdd.toms_storage.client;
 
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.minecraft.client.gui.GuiButton;
@@ -32,6 +28,8 @@ import com.hepdd.toms_storage.ModNetwork;
 import com.hepdd.toms_storage.StoredItemStack;
 import com.hepdd.toms_storage.StoredItemStack.IStoredItemStackComparator;
 import com.hepdd.toms_storage.StoredItemStack.SortingTypes;
+import com.hepdd.toms_storage.client.SearchMatcher.SearchQuery;
+import com.hepdd.toms_storage.client.SearchMatcher.SearchTarget;
 import com.hepdd.toms_storage.gui.ContainerStorageTerminal;
 import com.hepdd.toms_storage.gui.SlotAction;
 import com.hepdd.toms_storage.network.PacketTerminalAction;
@@ -47,23 +45,15 @@ import cpw.mods.fml.common.registry.GameRegistry.UniqueIdentifier;
 
 public class GuiStorageTerminal extends GuiContainer {
 
-    private static final int DIVISION_BASE = 1000;
+    private static final long TOOLTIP_FRAME_BUDGET_NS = 4_000_000L;
     private static final int[] SEARCH_PRESETS = { 0, Config.SEARCH_AUTO_FOCUS,
         Config.SEARCH_AUTO_FOCUS | Config.SEARCH_KEEP_TEXT,
         Config.SEARCH_AUTO_FOCUS | Config.SEARCH_KEEP_TEXT | Config.SEARCH_SYNC_NEI };
-    private static final char[] POSTFIXES = "KMGTPE".toCharArray();
-    private static final DecimalFormat FORMAT;
     private static final ResourceLocation STORAGE_GUI = new ResourceLocation(
         "tomsstorage",
         "textures/gui/storage_terminal.png");
     private static final ResourceLocation CREATIVE_TABS = new ResourceLocation(
         "textures/gui/container/creative_inventory/tabs.png");
-
-    static {
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.ROOT);
-        symbols.setDecimalSeparator('.');
-        FORMAT = new DecimalFormat(".#;0.#", symbols);
-    }
 
     protected final ContainerStorageTerminal container;
     private GuiTextField searchField;
@@ -77,9 +67,11 @@ public class GuiStorageTerminal extends GuiContainer {
     private long lastShiftClickTime;
     private ItemStack lastShiftClickStack;
     private final Map<StoredItemStack, SearchDocument> searchCache = new HashMap<>();
-    private Set<StoredItemStack> knownKinds = new HashSet<>();
+    private final List<StoredItemStack> pendingTooltipStacks = new ArrayList<>();
+    private int pendingTooltipCursor;
+    private SearchQuery activeSearchQuery = SearchQuery.EMPTY;
     private int lastClientDataRevision = -1;
-    private int lastServerSorting = -1;
+    private int lastClientKindsRevision = -1;
     private int searchMode;
     private boolean searchMigrated;
     private String originalNeiSearch;
@@ -102,11 +94,11 @@ public class GuiStorageTerminal extends GuiContainer {
     public void initGui() {
         super.initGui();
         Keyboard.enableRepeatEvents(true);
-        sortType = container.sorting & 1;
-        sortReversed = (container.sorting & 2) != 0;
-        lastServerSorting = container.sorting;
+        int localSorting = Config.normalizeSorting(Config.terminalSorting);
+        sortType = localSorting & 1;
+        sortReversed = (localSorting & 2) != 0;
         searchMode = Config.normalizeSearchMode(Config.terminalSearchMode);
-        searchMigrated = Config.terminalSearchMigrated;
+        searchMigrated = true;
         searchField = new GuiTextField(
             fontRendererObj,
             guiLeft + getStorageGridX() + 74,
@@ -115,10 +107,6 @@ public class GuiStorageTerminal extends GuiContainer {
             fontRendererObj.FONT_HEIGHT);
         searchField.setMaxStringLength(100);
         String initialSearch = Config.hasSearchOption(Config.SEARCH_KEEP_TEXT) ? Config.terminalLastSearch : "";
-        if (!searchMigrated && initialSearch.isEmpty() && container.search != null && !container.search.isEmpty()) {
-            initialSearch = container.search;
-            searchMigrated = true;
-        }
         searchField.setText(initialSearch);
         searchField.setEnableBackgroundDrawing(false);
         searchField.setTextColor(0xFFFFFF);
@@ -129,8 +117,8 @@ public class GuiStorageTerminal extends GuiContainer {
         buttonList.add(new SearchModeButton(2, guiLeft - 18, guiTop + 41));
         beginNeiSyncIfEnabled();
         searchCacheContext = getSearchCacheContext();
-        knownKinds = new HashSet<>(container.clientStacks);
         lastClientDataRevision = container.getClientDataRevision();
+        lastClientKindsRevision = container.getClientKindsRevision();
         updateSearch();
     }
 
@@ -147,9 +135,14 @@ public class GuiStorageTerminal extends GuiContainer {
         super.updateScreen();
         searchField.updateCursorCounter();
         invalidateSearchCacheWhenNeeded();
-        migrateLegacySearchWhenAvailable();
         synchronizeNeiSearch();
         updateForChangedTerminalData();
+    }
+
+    public void refreshFromTerminalData() {
+        if (searchField != null) {
+            updateForChangedTerminalData();
+        }
     }
 
     @Override
@@ -169,7 +162,7 @@ public class GuiStorageTerminal extends GuiContainer {
         } else {
             return;
         }
-        ModNetwork.channel.sendToServer(PacketTerminalAction.sorting(packSorting()));
+        Config.saveTerminalSorting(packSorting());
         updateSearch();
     }
 
@@ -271,6 +264,8 @@ public class GuiStorageTerminal extends GuiContainer {
 
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        updateForChangedTerminalData();
+        processPendingTooltips();
         hoveredStack = getHoveredStack(mouseX, mouseY);
         super.drawScreen(mouseX, mouseY, partialTicks);
         searchField.drawTextBox();
@@ -372,13 +367,13 @@ public class GuiStorageTerminal extends GuiContainer {
     }
 
     private void drawStoredStack(StoredItemStack storedStack, int x, int y) {
-        ItemStack stack = storedStack.getStack()
-            .copy();
-        stack.stackSize = 1;
+        ItemStack stack = storedStack.getStack();
+        if (stack == null) return;
         RenderHelper.enableGUIStandardItemLighting();
         itemRender.renderItemAndEffectIntoGUI(fontRendererObj, mc.getTextureManager(), stack, x, y);
         itemRender.renderItemOverlayIntoGUI(fontRendererObj, mc.getTextureManager(), stack, x, y, null);
-        drawStackSize(formatNumber(storedStack.getQuantity()), x, y);
+        if (stack.stackSize != 1) stack.stackSize = 1;
+        drawStackSize(storedStack.getFormattedCount(SearchMatcher::formatNumber), x, y);
         GL11.glDisable(GL11.GL_LIGHTING);
     }
 
@@ -430,14 +425,92 @@ public class GuiStorageTerminal extends GuiContainer {
 
     private void updateSearch() {
         sortedStacks = new ArrayList<>();
-        String text = searchField == null ? "" : searchField.getText();
-        Pattern pattern = compilePattern(text.startsWith("@") ? text.substring(1) : text);
-        boolean modSearch = text.startsWith("@");
-        for (StoredItemStack stack : container.clientStacks) {
-            if (pattern == null || matches(getSearchDocument(stack.getStack(), !modSearch), pattern, modSearch)) {
-                sortedStacks.add(stack);
+        pendingTooltipStacks.clear();
+        pendingTooltipCursor = 0;
+
+        String rawText = searchField == null ? "" : searchField.getText();
+        activeSearchQuery = SearchMatcher.parseSearchQuery(rawText);
+        if (activeSearchQuery.isEmpty()) {
+            sortedStacks.addAll(container.clientStacks);
+            sortAndClampScroll();
+            return;
+        }
+
+        long deadlineNs = System.nanoTime() + TOOLTIP_FRAME_BUDGET_NS;
+        boolean budgetExhausted = false;
+        for (StoredItemStack stored : container.clientStacks) {
+            if (stored == null || stored.getStack() == null) continue;
+            SearchDocument document = getSearchDocument(stored);
+            if (document == null) continue;
+
+            if (activeSearchQuery.target == SearchTarget.MOD_ONLY) {
+                ensureModTexts(document, stored.getStack());
+                if (SearchMatcher.matchesMod(document.modTexts, activeSearchQuery.pattern)) {
+                    sortedStacks.add(stored);
+                }
+                continue;
+            }
+
+            if (activeSearchQuery.target == SearchTarget.NAME_AND_TOOLTIP && SearchMatcher
+                .matchesName(document.displayName, activeSearchQuery.queryText, activeSearchQuery.pattern)) {
+                sortedStacks.add(stored);
+                continue;
+            }
+
+            if (document.tooltip != null) {
+                if (SearchMatcher.matchesTooltipLines(document.tooltip, activeSearchQuery)) {
+                    sortedStacks.add(stored);
+                }
+            } else if (!budgetExhausted) {
+                loadTooltip(document, stored.getStack());
+                if (System.nanoTime() >= deadlineNs) {
+                    budgetExhausted = true;
+                }
+                if (SearchMatcher.matchesTooltipLines(document.tooltip, activeSearchQuery)) {
+                    sortedStacks.add(stored);
+                }
+            } else {
+                pendingTooltipStacks.add(stored);
             }
         }
+        sortAndClampScroll();
+    }
+
+    private void processPendingTooltips() {
+        if (pendingTooltipCursor >= pendingTooltipStacks.size()) return;
+        if (activeSearchQuery.isEmpty() || activeSearchQuery.target == SearchTarget.MOD_ONLY) {
+            pendingTooltipStacks.clear();
+            pendingTooltipCursor = 0;
+            return;
+        }
+
+        long deadlineNs = System.nanoTime() + TOOLTIP_FRAME_BUDGET_NS;
+        boolean addedAny = false;
+        while (pendingTooltipCursor < pendingTooltipStacks.size()) {
+            StoredItemStack stored = pendingTooltipStacks.get(pendingTooltipCursor++);
+            if (stored == null || stored.getStack() == null) continue;
+            SearchDocument document = getSearchDocument(stored);
+            if (document == null) continue;
+            if (document.tooltip == null) {
+                loadTooltip(document, stored.getStack());
+            }
+            if (SearchMatcher.matchesTooltipLines(document.tooltip, activeSearchQuery)) {
+                sortedStacks.add(stored);
+                addedAny = true;
+            }
+            if (System.nanoTime() >= deadlineNs) break;
+        }
+
+        if (pendingTooltipCursor >= pendingTooltipStacks.size()) {
+            pendingTooltipStacks.clear();
+            pendingTooltipCursor = 0;
+        }
+        if (addedAny) {
+            sortAndClampScroll();
+        }
+    }
+
+    private void sortAndClampScroll() {
         IStoredItemStackComparator comparator = SortingTypes.VALUES[sortType].create(sortReversed);
         Collections.sort(sortedStacks, comparator);
         int maxRows = Math.max(
@@ -453,100 +526,62 @@ public class GuiStorageTerminal extends GuiContainer {
         updateSearch();
     }
 
-    private void updateQuantitiesWithoutSorting() {
-        Map<StoredItemStack, StoredItemStack> currentByKind = new HashMap<>();
-        for (StoredItemStack current : container.clientStacks) currentByKind.put(current, current);
-        List<StoredItemStack> updated = new ArrayList<>();
-        for (StoredItemStack displayed : sortedStacks) {
-            StoredItemStack current = currentByKind.get(displayed);
-            updated.add(new StoredItemStack(displayed.getStack(), current == null ? 0 : current.getQuantity()));
-        }
-        sortedStacks = updated;
-    }
-
-    private boolean matches(SearchDocument document, Pattern pattern, boolean modSearch) {
-        if (document == null) return false;
-        if (pattern == null) return true;
-        if (modSearch) return matchesMod(document, pattern);
-        String searchText = searchField == null ? "" : searchField.getText();
-        if (SearchMatcher.matchesName(document.displayName, searchText, pattern)) return true;
-        for (String line : document.tooltip) {
-            if (SearchMatcher.matchesTooltip(line, searchText, pattern)) return true;
-        }
-        return false;
-    }
-
-    private SearchDocument getSearchDocument(ItemStack stack, boolean includeTooltip) {
-        if (stack == null) return null;
-        StoredItemStack key = new StoredItemStack(stack);
-        SearchDocument document = searchCache.get(key);
+    private SearchDocument getSearchDocument(StoredItemStack stored) {
+        if (stored == null || stored.getStack() == null) return null;
+        SearchDocument document = searchCache.get(stored);
         if (document == null) {
             String displayName;
             try {
-                displayName = stack.getDisplayName();
+                displayName = stored.getDisplayName();
             } catch (RuntimeException exception) {
                 displayName = "";
             }
-            List<String> modTexts = new ArrayList<>();
-            try {
-                UniqueIdentifier identifier = GameRegistry.findUniqueIdentifierFor(stack.getItem());
-                if (identifier != null) {
-                    modTexts.add(identifier.modId);
-                    ModContainer mod = Loader.instance()
-                        .getIndexedModList()
-                        .get(identifier.modId);
-                    if (mod != null) modTexts.add(mod.getName());
-                }
-                modTexts.add(
-                    stack.getItem()
-                        .getUnlocalizedName());
-            } catch (RuntimeException ignored) {}
-            document = new SearchDocument(displayName, modTexts);
-            searchCache.put(key, document);
-        }
-        if (includeTooltip && document.tooltip == null) {
-            try {
-                document.tooltip = new ArrayList<>(
-                    stack.getTooltip(mc.thePlayer, mc.gameSettings.advancedItemTooltips));
-            } catch (RuntimeException exception) {
-                document.tooltip = Collections.emptyList();
-            }
+            document = new SearchDocument(displayName);
+            searchCache.put(stored, document);
         }
         return document;
     }
 
-    private boolean matchesMod(SearchDocument document, Pattern pattern) {
-        for (String text : document.modTexts) {
-            if (patternMatches(pattern, text)) return true;
-        }
-        return false;
-    }
-
-    private boolean patternMatches(Pattern pattern, String text) {
-        if (text == null) return false;
-        String bounded = text.length() > 256 ? text.substring(0, 256) : text;
+    private void ensureModTexts(SearchDocument document, ItemStack stack) {
+        if (document.modTexts != null) return;
+        List<String> modTexts = new ArrayList<>(3);
         try {
-            return pattern.matcher(bounded)
-                .find();
-        } catch (RuntimeException | StackOverflowError ignored) {
-            return false;
-        }
+            UniqueIdentifier identifier = GameRegistry.findUniqueIdentifierFor(stack.getItem());
+            if (identifier != null) {
+                modTexts.add(identifier.modId);
+                ModContainer mod = Loader.instance()
+                    .getIndexedModList()
+                    .get(identifier.modId);
+                if (mod != null) modTexts.add(mod.getName());
+            }
+            modTexts.add(
+                stack.getItem()
+                    .getUnlocalizedName());
+        } catch (RuntimeException ignored) {}
+        document.modTexts = modTexts;
     }
 
-    private Pattern compilePattern(String text) {
-        if (text == null || text.isEmpty()) return null;
-        if (isPotentiallyUnsafeRegex(text)) {
-            return Pattern.compile(Pattern.quote(text.toLowerCase(Locale.ROOT)), Pattern.CASE_INSENSITIVE);
-        }
+    @SuppressWarnings("unchecked")
+    private void loadTooltip(SearchDocument document, ItemStack stack) {
+        if (document.tooltip != null) return;
         try {
-            return Pattern.compile(text.toLowerCase(Locale.ROOT), Pattern.CASE_INSENSITIVE);
-        } catch (RuntimeException ignored) {
-            return Pattern.compile(Pattern.quote(text.toLowerCase(Locale.ROOT)), Pattern.CASE_INSENSITIVE);
+            document.tooltip = new ArrayList<String>(
+                stack.getTooltip(mc.thePlayer, mc.gameSettings.advancedItemTooltips));
+        } catch (RuntimeException exception) {
+            document.tooltip = Collections.emptyList();
         }
     }
 
-    private boolean isPotentiallyUnsafeRegex(String text) {
-        return text.contains("(?") || text.matches(".*\\\\[1-9].*") || text.matches(".*\\)[+*{].*");
+    public static SearchQuery parseSearchQuery(String rawText) {
+        return SearchMatcher.parseSearchQuery(rawText);
+    }
+
+    public static Pattern compilePattern(String text) {
+        return SearchMatcher.compilePattern(text);
+    }
+
+    public static String formatNumber(long number) {
+        return SearchMatcher.formatNumber(number);
     }
 
     private int getVirtualSlotAt(int mouseX, int mouseY) {
@@ -616,43 +651,29 @@ public class GuiStorageTerminal extends GuiContainer {
         Config.saveTerminalSearchSettings(searchMode, retained, searchMigrated);
     }
 
-    private void migrateLegacySearchWhenAvailable() {
-        if (searchMigrated || container.getClientDataRevision() <= 0) return;
-        if (hasSearchOption(Config.SEARCH_KEEP_TEXT) && searchField.getText()
-            .isEmpty() && container.search != null && !container.search.isEmpty()) {
-            searchField.setText(container.search);
-            onSearchChanged();
-        }
-        searchMigrated = true;
-        saveSearchSettings();
-    }
-
     private void updateForChangedTerminalData() {
+        if (searchField == null) return;
         int revision = container.getClientDataRevision();
         if (revision == lastClientDataRevision) return;
         lastClientDataRevision = revision;
-        boolean sortingChanged = container.sorting != lastServerSorting;
-        if (sortingChanged) {
-            lastServerSorting = container.sorting;
-            sortType = container.sorting & 1;
-            sortReversed = (container.sorting & 2) != 0;
-        }
-        Set<StoredItemStack> currentKinds = new HashSet<>(container.clientStacks);
-        boolean kindsChanged = !currentKinds.equals(knownKinds);
-        knownKinds = currentKinds;
-        if (kindsChanged || sortingChanged) {
-            searchCache.keySet()
-                .retainAll(currentKinds);
+        int kindsRevision = container.getClientKindsRevision();
+        if (kindsRevision != lastClientKindsRevision) {
+            lastClientKindsRevision = kindsRevision;
+            if (searchCache.size() > container.clientStacks.size() * 2 + 64) {
+                searchCache.keySet()
+                    .retainAll(new HashSet<>(container.clientStacks));
+            }
             updateSearch();
-            return;
+        } else if (sortType == SortingTypes.AMOUNT.ordinal()) {
+            sortAndClampScroll();
         }
-        updateQuantitiesWithoutSorting();
     }
 
     private void invalidateSearchCacheWhenNeeded() {
         String context = getSearchCacheContext();
         if (context.equals(searchCacheContext)) return;
         searchCacheContext = context;
+        StoredItemStack.invalidateLanguageCache();
         searchCache.clear();
         updateSearch();
     }
@@ -741,22 +762,6 @@ public class GuiStorageTerminal extends GuiContainer {
         return sortType | (sortReversed ? 2 : 0);
     }
 
-    private String formatNumber(long number) {
-        if (number <= 9999) return Long.toString(number);
-        long base = number;
-        double last = base * 1000.0D;
-        int exponent = -1;
-        while (Long.toString(base)
-            .length() + 1 > 4 && exponent + 1 < POSTFIXES.length) {
-            last = base;
-            base /= DIVISION_BASE;
-            exponent++;
-        }
-        String withPrecision = FORMAT.format(last / DIVISION_BASE) + POSTFIXES[exponent];
-        String withoutPrecision = base + String.valueOf(POSTFIXES[exponent]);
-        return withPrecision.length() <= 4 ? withPrecision : withoutPrecision;
-    }
-
     private class TerminalButton extends GuiButton {
 
         private final int tile;
@@ -810,11 +815,10 @@ public class GuiStorageTerminal extends GuiContainer {
 
         private final String displayName;
         private List<String> tooltip;
-        private final List<String> modTexts;
+        private List<String> modTexts;
 
-        private SearchDocument(String displayName, List<String> modTexts) {
+        private SearchDocument(String displayName) {
             this.displayName = displayName;
-            this.modTexts = modTexts;
         }
     }
 }

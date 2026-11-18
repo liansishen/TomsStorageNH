@@ -47,7 +47,13 @@ public abstract class GuiOverlayButtonMixin {
     private int tomsstorage$presencePreviewRevision = -1;
 
     @Unique
-    private ItemStack[] tomsstorage$presenceInventory;
+    private ItemStack[] tomsstorage$presenceSlotRefs;
+
+    @Unique
+    private int[] tomsstorage$presenceSlotSizes;
+
+    @Unique
+    private int[] tomsstorage$presenceSlotDamages;
 
     @Inject(method = "ingredientsOverlay", at = @At("HEAD"))
     private void tomsstorage$refreshPresence(CallbackInfoReturnable<List<ItemOverlayState>> cir) {
@@ -57,25 +63,38 @@ public abstract class GuiOverlayButtonMixin {
             int previewRevision = container.getAutoCraftPreview()
                 .getRevision();
             int size = container.inventorySlots.size();
-            boolean changed = tomsstorage$presenceInventory == null || tomsstorage$presenceInventory.length != size
+            boolean changed = tomsstorage$presenceSlotRefs == null || tomsstorage$presenceSlotRefs.length != size
                 || tomsstorage$presenceStorageRevision != storageRevision
                 || tomsstorage$presencePreviewRevision != previewRevision;
             for (int i = 0; i < size && !changed; i++) {
                 if (i == ContainerCraftingTerminal.GRID_SLOT_START - 1) continue;
-                changed = !ItemStack.areItemStacksEqual(
-                    tomsstorage$presenceInventory[i],
-                    container.getSlot(i)
-                        .getStack());
+                ItemStack current = container.getSlot(i)
+                    .getStack();
+                ItemStack previous = tomsstorage$presenceSlotRefs[i];
+                if (current == previous) {
+                    if (current != null && (current.stackSize != tomsstorage$presenceSlotSizes[i]
+                        || current.getItemDamage() != tomsstorage$presenceSlotDamages[i])) {
+                        changed = true;
+                    }
+                } else if (!ItemStack.areItemStacksEqual(previous, current)) {
+                    changed = true;
+                }
             }
             if (changed) {
                 tomsstorage$presenceStorageRevision = storageRevision;
                 tomsstorage$presencePreviewRevision = previewRevision;
-                tomsstorage$presenceInventory = new ItemStack[size];
+                if (tomsstorage$presenceSlotRefs == null || tomsstorage$presenceSlotRefs.length != size) {
+                    tomsstorage$presenceSlotRefs = new ItemStack[size];
+                    tomsstorage$presenceSlotSizes = new int[size];
+                    tomsstorage$presenceSlotDamages = new int[size];
+                }
                 for (int i = 0; i < size; i++) {
                     if (i == ContainerCraftingTerminal.GRID_SLOT_START - 1) continue;
-                    tomsstorage$presenceInventory[i] = ItemStack.copyItemStack(
-                        container.getSlot(i)
-                            .getStack());
+                    ItemStack current = container.getSlot(i)
+                        .getStack();
+                    tomsstorage$presenceSlotRefs[i] = current;
+                    tomsstorage$presenceSlotSizes[i] = current == null ? 0 : current.stackSize;
+                    tomsstorage$presenceSlotDamages[i] = current == null ? 0 : current.getItemDamage();
                 }
                 itemPresenceCache.clear();
             }

@@ -1,9 +1,11 @@
 package com.hepdd.toms_storage.block;
 
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockContainer;
 import net.minecraft.block.material.Material;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ChatComponentTranslation;
@@ -33,10 +35,29 @@ public class BlockInventoryConnector extends BlockContainer {
     }
 
     @Override
+    public void onNeighborBlockChange(World world, int x, int y, int z, Block neighbor) {
+        if (!world.isRemote) {
+            TileEntity tile = world.getTileEntity(x, y, z);
+            if (tile instanceof TileEntityInventoryConnector) {
+                ((TileEntityInventoryConnector) tile).markTopologyDirty();
+            }
+            TileEntityInventoryConnector.notifyBlockChanged(world, x, y, z);
+        }
+    }
+
+    @Override
+    public void breakBlock(World world, int x, int y, int z, Block block, int metadata) {
+        super.breakBlock(world, x, y, z, block, metadata);
+        if (!world.isRemote) {
+            TileEntityInventoryConnector.notifyBlockChanged(world, x, y, z);
+        }
+    }
+
+    @Override
     public boolean onBlockActivated(World world, int x, int y, int z, EntityPlayer player, int side, float hitX,
         float hitY, float hitZ) {
         ItemStack held = player.getHeldItem();
-        if (held != null && held.getItem() == net.minecraft.item.Item.getItemFromBlock(ModRegistry.inventoryCable)) {
+        if (held != null && held.getItem() == Item.getItemFromBlock(ModRegistry.inventoryCable)) {
             return false;
         }
         if (!world.isRemote) {
@@ -55,12 +76,9 @@ public class BlockInventoryConnector extends BlockContainer {
             TileEntity tile = world.getTileEntity(x, y, z);
             if (tile instanceof TileEntityInventoryConnector) {
                 IStorageInventory inventory = ((TileEntityInventoryConnector) tile).getStorageInventory();
-                int total = inventory.getSlots();
-                int free = 0;
-                for (int i = 0; i < total; i++) {
-                    ItemStack stack = inventory.getStackInSlot(i);
-                    if (stack == null || stack.stackSize <= 0) free++;
-                }
+                long stats = inventory.packSlotStats();
+                int total = (int) (stats >>> 32);
+                int free = (int) stats;
                 player.addChatMessage(
                     new ChatComponentTranslation("message.tomsstorage.inventory_connector.slots", free, total));
                 if (((TileEntityInventoryConnector) tile).isCableScanLimitReached()) {

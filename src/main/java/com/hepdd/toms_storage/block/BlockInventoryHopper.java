@@ -1,5 +1,6 @@
 package com.hepdd.toms_storage.block;
 
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockContainer;
 import net.minecraft.block.material.Material;
 import net.minecraft.entity.player.EntityPlayer;
@@ -11,6 +12,7 @@ import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
 
 import com.hepdd.toms_storage.ModRegistry;
+import com.hepdd.toms_storage.tile.TileEntityInventoryConnector;
 import com.hepdd.toms_storage.tile.TileEntityInventoryHopper;
 
 public class BlockInventoryHopper extends BlockContainer {
@@ -36,6 +38,14 @@ public class BlockInventoryHopper extends BlockContainer {
         return direction == ForgeDirection.UNKNOWN ? ForgeDirection.DOWN.ordinal()
             : direction.getOpposite()
                 .ordinal();
+    }
+
+    @Override
+    public void onBlockAdded(World world, int x, int y, int z) {
+        super.onBlockAdded(world, x, y, z);
+        if (!world.isRemote) {
+            TileEntityInventoryConnector.notifyBlockChanged(world, x, y, z);
+        }
     }
 
     @Override
@@ -104,8 +114,19 @@ public class BlockInventoryHopper extends BlockContainer {
     }
 
     @Override
-    public void onNeighborBlockChange(World world, int x, int y, int z, net.minecraft.block.Block neighbor) {
+    public void onNeighborBlockChange(World world, int x, int y, int z, Block neighbor) {
         TileEntity tile = world.getTileEntity(x, y, z);
         if (tile instanceof TileEntityInventoryHopper) ((TileEntityInventoryHopper) tile).markNetworkDirty();
+        if (!world.isRemote) {
+            TileEntityInventoryConnector.notifyBlockChanged(world, x, y, z);
+        }
+    }
+
+    @Override
+    public void breakBlock(World world, int x, int y, int z, Block block, int metadata) {
+        super.breakBlock(world, x, y, z, block, metadata);
+        if (!world.isRemote) {
+            TileEntityInventoryConnector.notifyBlockChanged(world, x, y, z);
+        }
     }
 }

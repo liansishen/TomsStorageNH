@@ -11,4 +11,10 @@ public interface IStorageNetworkEndpoint {
     void attachNetwork(TileEntityInventoryConnector connector, ForgeDirection side);
 
     void markNetworkConflict();
+
+    default void markNetworkConflict(TileEntityInventoryConnector connector, ForgeDirection side) {
+        markNetworkConflict();
+    }
+
+    default void detachNetwork(TileEntityInventoryConnector connector) {}
 }
